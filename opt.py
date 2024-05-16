@@ -1,14 +1,15 @@
 # import libraries
 import itertools
 import numpy as np
-import pandas as pd
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+# import pandas as pd
+# from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
 from scipy.stats import qmc
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import datetime as dt
 from chemical_space import ChemicalSpace
+from space_mat import SpaceMatrix
 
 def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experiments=1000):
     def convert_to_onehot(point):
@@ -45,7 +46,7 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
     # metrics to save for benchmarking
     num_experiments_run:int = 0
 
-    predicted_surface = np.zeros(chemical_space.shape)
+    predicted_surface = SpaceMatrix(np.zeros(chemical_space.shape))
 
     # 'run the reaction and measure the yield'
     
@@ -68,21 +69,6 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
     # more diverse coverage from the set of conditions is good
     def conditionSetScore(conditions:list) -> float:
         return 0.0
-
-    # TODO: handle combinatorics of conditions
-    def count_coverage_for_set(set):
-        covered = predicted_surface[set[0]]
-        for i in range(1,len(set)):
-            covered = np.logical_or(covered, predicted_surface[set[i]])
-        return np.sum(covered, axis=(0,1))
-
-    def bestReactionSet(n = 2):
-        possible_combos = list(itertools.combinations(range(chemical_space.shape[0]), n))
-        coverages = [count_coverage_for_set(set) for set in possible_combos]
-        print(coverages)
-        best_set = possible_combos[np.argmax(coverages)]
-        return best_set
-
 
     # Set up Active Learning Classifier over 2D space (reactants x conditions)
         # start with One-hot encoding + move to featurized later
@@ -114,7 +100,7 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
         seed_vals = np.array([chemical_space.measure_reaction_yield(seed[i]) for i in range(len(seed))])
         seed_vals_sum = np.sum(seed_vals)
         seed_attempts += 1
-        print(seed_attempts)
+        # print(seed_attempts)
     print(seed)
 
     x = None
@@ -129,6 +115,7 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
 
     best_set = []
     last_change = 0
+    coverage = 0
 
     while (max(point_certainty, 1 - point_certainty) < .7 or (num_experiments_run < initial_seed + batch_size)) and (num_experiments_run < max_experiments) and (last_change < 10):
         # measure yields for uncertain points
@@ -153,14 +140,16 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
             # get certainty for all points and suggest the most uncertain (something for not doing similar reactions?)
         uncertainty = gpc.predict_proba(np.array(all_points_one_hot))
 
-        predicted_surface = np.array([uncertainty[i][1] > .5 for i in range(len(uncertainty))]).reshape(chemical_space.shape, order='C')
+        predicted_surface = SpaceMatrix(np.array([uncertainty[i][1] > .5 for i in range(len(uncertainty))]).reshape(chemical_space.shape, order='C'))
         
         accuracy, precicion, recall = chemical_space.score_classifier_prediction(uncertainty, cutoff)
         metrics['accuracy'].append(accuracy)
         metrics['precision'].append(precicion)
         metrics['recall'].append(recall)
 
-        predicted_set = bestReactionSet(2)
+        predicted_set, coverage = predicted_surface.best_condition_sets(chemical_space.all_condtions, True, 3, 1)
+        predicted_set = predicted_set[0]
+        coverage = coverage[0]
         if predicted_set != best_set:
             best_set = predicted_set
             last_change = 0
@@ -182,8 +171,8 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
             i += 1
             if i < len(uncertainty_order):
                 next_point = all_points[uncertainty_order[i]]
-        print(point_uncertainties)
-        print(next_points)
+        # print(point_uncertainties)
+        # print(next_points)
         point_certainty = np.average(point_uncertainties)
         print(f"uncertainty of {next_points}: {point_certainty}")
         print(num_experiments_run)
@@ -192,18 +181,18 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
     
     date_str = f"{dt.datetime.now()}"
     date_str = date_str[:10] +"_"+ date_str[11:19]
-    with open(f"metrics_{date_str}.txt", "w") as f:
+    with open(f"metrics/metrics_{date_str}.txt", "w") as f:
         f.write(f"accuracy: {metrics['accuracy']}\n")
         f.write(f"precision: {metrics['precision']}\n")
         f.write(f"recall: {metrics['recall']}\n")
         f.write(f"best_set: {best_set}\n")
-        f.write(f"predicted_surface: {predicted_surface}\n")
+        # f.write(f"predicted_surface: {predicted_surface}\n")
 
-    print(x)
+    # print(x)
     # print(uncertainty)
-    print(metrics)
+    # print(metrics)
 
-    print(f"best_set: {best_set}, num_experiments_run: {num_experiments_run}")
+    print(f"best_set: {best_set}, num_experiments_run: {num_experiments_run}, coverage: {coverage}")
 
 # run the optimization
 # optimize((30, 20, 10), dataset_file='datasets/correlated_toy_30x20x10.csv', cutoff=.5, batch_size=3)

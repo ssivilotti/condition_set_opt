@@ -3,12 +3,13 @@ import pandas as pd
 import itertools
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score
+from space_mat import SpaceMatrix
 
 class ChemicalSpace:
     def __init__(self, reactant_titles:list, condition_titles:list, data_file, target_title='yield') -> None:
         self.reactants_dim = len(reactant_titles)
         self.condtions_dim = len(condition_titles)
-        self.yield_surface = self.create_mat(data_file, condition_titles, reactant_titles, target_title)
+        self.yield_surface = SpaceMatrix(self._create_mat(data_file, condition_titles, reactant_titles, target_title))
         self.shape = self.yield_surface.shape
         self.all_points = list(itertools.product(*[range(s) for s in self.shape]))
         self._y_true = np.array([self.yield_surface[point] for point in self.all_points])
@@ -35,31 +36,9 @@ class ChemicalSpace:
         y_pred = y_pred.T[1] > .5
         y_true = self._y_true > cutoff
         return accuracy_score(y_true, y_pred), precision_score(y_true, y_pred), recall_score(y_true, y_pred)
-    
-    def _get_condition_surface(self, condition:tuple) -> np.ndarray:
-        s = self.yield_surface[condition[0]]
-        for c in condition[1:]:
-            s = s[c]
-        return s
-    
-    def count_coverage(self, condtion_set:tuple, yield_threshold:float) -> int:
-        yield_coverage_surface = np.zeros(self.shape[self.condtions_dim:])
-        for cond in condtion_set:
-            s = self._get_condition_surface(cond)
-            yield_coverage_surface = np.maximum(yield_coverage_surface, s)
-        return np.sum(yield_coverage_surface > yield_threshold)
 
     def best_condition_sets(self, yield_threshold:float, max_set_size:int=1, num_sets:int=10) -> tuple:
-        possible_combos = list(itertools.combinations(self.all_condtions, max_set_size))
-        coverages = [self.count_coverage(set, yield_threshold) for set in possible_combos]
-        if max_set_size > 1:
-            best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(yield_threshold, max_set_size-1, num_sets)
-            possible_combos = possible_combos + best_condition_sets_smaller
-            coverages = coverages + best_coverages_smaller
-        best_set_idxs = np.argsort(coverages)[-num_sets:]
-        best_sets = [possible_combos[i] for i in best_set_idxs]
-        best_coverages = [coverages[i] for i in best_set_idxs]
-        return best_sets, best_coverages
+        return self.yield_surface.best_condition_sets(self.all_condtions, yield_threshold, max_set_size, num_sets)
     
     def format_condition(self, condition:tuple) -> str:
         return ', '.join([f'{self.labels[i][c]}' for i, c in enumerate(condition)])
@@ -72,7 +51,7 @@ class ChemicalSpace:
         xlabel = self.titles[self.condtions_dim + 1]
         yields = np.zeros(self.shape[self.condtions_dim:])
         for condition in conditions:
-            yields = np.maximum(yields, self._get_condition_surface(condition))
+            yields = np.maximum(yields, self.yield_surface.get_condition_surface(condition))
         below_threshold = yields < yield_threshold
         yields[below_threshold] = 0
         plt.imshow(yields, vmin=0, vmax=100)

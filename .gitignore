@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *.ipynb_checkpoints
-datasets/share_science_models/*
+datasets/raw_datasets/*
 datasets/Toy_Datasets/toy*
 datasets/Toy_Datasets/small_toy.csv
 metrics*.txt

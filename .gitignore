@@ -1,0 +1,5 @@
+datasets/share_science_models/*
+datasets/Toy_Datasets/toy*
+datasets/Toy_Datasets/small_toy.csv
+metrics*.txt
+.DS_Store

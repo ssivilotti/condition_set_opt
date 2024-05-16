@@ -143,7 +143,7 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
         metrics['precision'].append(precicion)
         metrics['recall'].append(recall)
 
-        predicted_set, coverage = predicted_surface.best_condition_sets(chemical_space.all_condtions, BINARY_COUNT, 3, 1)
+        predicted_set, coverage = predicted_surface.best_condition_sets(chemical_space.all_conditions, BINARY_COUNT, 3, 1)
         predicted_set = predicted_set[0]
         coverage = coverage[0]
         if predicted_set != best_set:
@@ -192,5 +192,5 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
 
 # run the optimization
 # optimize((30, 20, 10), dataset_file='datasets/correlated_toy_30x20x10.csv', cutoff=.5, batch_size=3)
-aryl_scope = ChemicalSpace(['electrophile_id', 'nucleophile_id'], ['ligand_name'], 'datasets/Good_Datasets/aryl-scope-ligand.csv')
+aryl_scope = ChemicalSpace(['ligand_name'], ['electrophile_id', 'nucleophile_id'], 'datasets/Good_Datasets/aryl-scope-ligand.csv')
 optimize(aryl_scope, cutoff=40, batch_size=15, max_experiments=100)

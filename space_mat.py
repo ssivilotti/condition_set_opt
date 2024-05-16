@@ -10,7 +10,7 @@ class SpaceMatrix:
     def __init__(self, matrix:np.ndarray) -> None:
         '''
         @params
-        matrix: np.ndarray, the matrix of the chemical space can be either yields or binary values, the shape should be the condtions followed by the reactants such that if n is the number of dimensions in a condtion, shape[:n] should all relate to condtion options and shape[n:] should all relate to reactant options
+        matrix: np.ndarray, the matrix of the chemical space can be either yields or binary values, the shape should be the conditions followed by the reactants such that if n is the number of dimensions in a condition, shape[:n] should all relate to condition options and shape[n:] should all relate to reactant options
 
         attributes:
         mat: np.ndarray, the matrix of the chemical space
@@ -87,7 +87,7 @@ class SpaceMatrix:
         max_set_size: int, the maximum number of conditions to include in a set
         num_sets: int, the number of sets to return
 
-        returns: list of condtion tuples, list of floats, the best condition sets and their corresponding scores
+        returns: list of condition tuples, list of floats, the best condition sets and their corresponding scores
         '''
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
         coverages = [self.score_coverage(set, scoring_function) for set in possible_combos]
@@ -95,8 +95,6 @@ class SpaceMatrix:
             best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, num_sets)
             possible_combos = possible_combos + best_condition_sets_smaller
             coverages = coverages + best_coverages_smaller
-        print(coverages)
-        print(sum(self.mat))
         best_set_idxs = np.argsort(coverages)[-1*num_sets:]
         best_sets = [possible_combos[i] for i in best_set_idxs]
         best_coverages = [coverages[i] for i in best_set_idxs]

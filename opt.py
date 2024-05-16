@@ -1,15 +1,11 @@
-# import libraries
-import itertools
 import numpy as np
-# import pandas as pd
-# from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
 from scipy.stats import qmc
-# import matplotlib.pyplot as plt
 import datetime as dt
 from chemical_space import ChemicalSpace
 from space_mat import SpaceMatrix
+from space_mat import BINARY_COUNT
 
 def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experiments=1000):
     def convert_to_onehot(point):
@@ -147,7 +143,7 @@ def optimize(chemical_space:ChemicalSpace, cutoff=.9, batch_size=8, max_experime
         metrics['precision'].append(precicion)
         metrics['recall'].append(recall)
 
-        predicted_set, coverage = predicted_surface.best_condition_sets(chemical_space.all_condtions, True, 3, 1)
+        predicted_set, coverage = predicted_surface.best_condition_sets(chemical_space.all_condtions, BINARY_COUNT, 3, 1)
         predicted_set = predicted_set[0]
         coverage = coverage[0]
         if predicted_set != best_set:

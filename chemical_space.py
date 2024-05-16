@@ -4,6 +4,7 @@ import itertools
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from space_mat import SpaceMatrix
+from space_mat import THRESHOLDED_COUNT
 
 class ChemicalSpace:
     def __init__(self, reactant_titles:list, condition_titles:list, data_file, target_title='yield') -> None:
@@ -38,7 +39,7 @@ class ChemicalSpace:
         return accuracy_score(y_true, y_pred), precision_score(y_true, y_pred), recall_score(y_true, y_pred)
 
     def best_condition_sets(self, yield_threshold:float, max_set_size:int=1, num_sets:int=10) -> tuple:
-        return self.yield_surface.best_condition_sets(self.all_condtions, yield_threshold, max_set_size, num_sets)
+        return self.yield_surface.best_condition_sets(self.all_condtions, THRESHOLDED_COUNT(yield_threshold), max_set_size, num_sets)
     
     def format_condition(self, condition:tuple) -> str:
         return ', '.join([f'{self.labels[i][c]}' for i, c in enumerate(condition)])

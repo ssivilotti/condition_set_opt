@@ -65,7 +65,7 @@ class SpaceMatrix:
         returns:
         int, the number of reactant combinations that meet the yield threshold for the given set of conditions
         '''
-        return self.score_coverage(condition_set, yield_threshold, THRESHOLDED_COUNT(yield_threshold))
+        return self.score_coverage(condition_set, THRESHOLDED_COUNT(yield_threshold))
     
     def score_coverage(self, condition_set:tuple, scoring_function) -> float:
         '''

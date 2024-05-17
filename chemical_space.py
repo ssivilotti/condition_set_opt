@@ -7,7 +7,7 @@ from space_mat import SpaceMatrix
 from space_mat import THRESHOLDED_COUNT
 
 class ChemicalSpace:
-    def __init__(self, condition_titles:list, reactant_titles:list, data_file, target_title='yield') -> None:
+    def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield') -> None:
         '''
         @params:
         condition_titles: list of strings, the headers of the condition components in the data file ex. ['ligand', 'solvent', 'temperature']
@@ -27,11 +27,13 @@ class ChemicalSpace:
         '''
         self.reactants_dim = len(reactant_titles)
         self.conditions_dim = len(condition_titles)
+        self.dataset_name = data_file.split('/')[-1].split('.')[0]
         self.yield_surface = SpaceMatrix(self._create_mat(data_file, condition_titles, reactant_titles, target_title))
         self.shape = self.yield_surface.shape
         self.all_points = list(itertools.product(*[range(s) for s in self.shape]))
         self._y_true = np.array([self.yield_surface[point] for point in self.all_points])
         self.all_conditions = list(itertools.product(*[range(s) for s in self.shape[:self.conditions_dim]]))
+        self.descriptors = None
 
     def _create_mat(self, data_file, cond_titles:list, reactant_titles:list,  target_title)->np.ndarray:
         # Create a matrix of the data
@@ -122,7 +124,7 @@ class ChemicalSpace:
         plt.title(f'{condition_str}', fontsize=20)
         plt.savefig(file_name)
 
-    def plot_surface(self, dataset_name, zlabel = '% Yield', title='Highest Yield Across All Conditions') -> None:    
+    def plot_surface(self, zlabel = '% Yield', title='Highest Yield Across All Conditions') -> None:    
         '''
         @params:
         dataset_name: string, the prefix of the file where the plot will be saved
@@ -142,4 +144,4 @@ class ChemicalSpace:
         plt.xlabel(xlabel, fontsize=15)
         plt.ylabel(ylabel, fontsize=15)
         plt.title(title, fontsize=20)
-        plt.savefig(f'{dataset_name}.png')
+        plt.savefig(f'{self.dataset_name}.png')

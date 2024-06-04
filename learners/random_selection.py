@@ -2,9 +2,10 @@ import numpy as np
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.gaussian_process.kernels import RBF
 from space_mat import SpaceMatrix
-from learner import Classifier
+from learners.learner import Classifier
 
 class ALClassifierRandomSelection(Classifier):
+    '''Randomly selects the next points to be measured, benchmarking against active learning classifiers'''
     def __init__(self, space_shape:int):
         super().__init__(space_shape)
 

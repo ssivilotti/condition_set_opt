@@ -1,17 +1,22 @@
 import numpy as np
-from learner import Classifier
+from learners.learner import Classifier
 
 class ALClassifierBasic(Classifier):
-    def __init__(self, space_shape:tuple, reactants_dim:int):
+    '''Active learning classifier that suggests the top n points with the highest uncertainty that haven't been measured yet to be measured next'''
+    def __init__(self, space_shape:tuple, reactants_dim:int, cutoff_certainty=.8):
         super().__init__(space_shape)
         self.reactants_dim = reactants_dim
+        self.certainty_cutoff = (cutoff_certainty - .5)/.5
 
-    def suggest_next_n_points(self, n:int, measured_indices:np.ndarray)->list:
+    def suggest_next_n_points(self, X:np.ndarray, n:int, measured_indices:np.ndarray)->list:
         '''next_points is a list of indices of the next points to be measured'''
-        if len(self.uncertainty) == 0:
+
+        uncertainty = self.predict(X)
+
+        if len(uncertainty) == 0:
             return []
 
-        distance_from_unknown = abs(self.uncertainty.T[0] - .5)
+        distance_from_unknown = abs(uncertainty.T[0] - .5)
         uncertainty_order = np.argsort(distance_from_unknown)
 
         next_points = []
@@ -29,6 +34,6 @@ class ALClassifierBasic(Classifier):
                 next_point = uncertainty_order[i]
         avg_point_certainty = np.average(point_uncertainties)
 
-        self.done = avg_point_certainty > .5
-        return next_points, point_uncertainties
+        self.done = avg_point_certainty > self.certainty_cutoff
+        return uncertainty, self.predicted_surface, next_points, point_uncertainties
     

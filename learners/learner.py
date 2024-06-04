@@ -18,7 +18,7 @@ class Learner(ABC):
         pass
 
     @abstractmethod
-    def suggest_next_n_points(self, n:int, measured_indices:np.ndarray)->np.ndarray:
+    def suggest_next_n_points(self, X:np.ndarray, n:int, measured_indices:np.ndarray)->tuple:
         pass
 
     @abstractmethod
@@ -31,6 +31,8 @@ class Learner(ABC):
 
 
 class Classifier(Learner):
+    '''abstract class for binary classifier model, used in Controller
+    subclasses must implement suggest_next_n_points to conplete the active learning agent'''
     def __init__(self, space_shape:int):
         super().__init__(space_shape)
         self.reset()
@@ -45,12 +47,14 @@ class Classifier(Learner):
         self.model = GaussianProcessClassifier(kernel=kernel,random_state=0)
 
     def predict(self, X:np.ndarray)->tuple:
-        self.uncertainty = self.model.predict_proba(X)
-        predicted_surface = SpaceMatrix(np.array([self.uncertainty[i][1] > .5 for i in range(len(self.uncertainty))]).reshape(self.shape, order='C'))
-        return self.uncertainty, predicted_surface
+        uncertainty = self.model.predict_proba(X)
+        # Predicted surface is a matrix of the predicted probability of the positive class (above .5 is predicted to be true)
+        # self.predicted_surface = SpaceMatrix(np.array([uncertainty[i][1] > .5 for i in range(len(uncertainty))]).reshape(self.shape, order='C'))
+        self.predicted_surface = SpaceMatrix(np.array([uncertainty[i][1] for i in range(len(uncertainty))]).reshape(self.shape, order='C'))
+        return uncertainty
 
     def reset(self)->None:
         self.done = False
-        self.uncertainty = []
+        self.predicted_surface = None
         self.initialize_model()
     

@@ -6,3 +6,5 @@ datasets/raw_datasets/*
 datasets/Toy_Datasets/toy*
 datasets/Toy_Datasets/small_toy.csv
 metrics*.txt
+old_files/*
+*.pkl

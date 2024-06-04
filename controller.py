@@ -1,14 +1,16 @@
 import os
 import pickle
+from matplotlib import pyplot as plt
 import numpy as np
 import datetime as dt
 from scipy.stats import qmc
 from chemical_space import ChemicalSpace
 from space_mat import SpaceMatrix
-from space_mat import BINARY_COUNT
-from learner import Learner
-from al_classifier import ALClassifierBasic
-from random_selection import ALClassifierRandomSelection
+from space_mat import THRESHOLDED_COUNT
+from learners.learner import Learner
+from learners.al_classifier import ALClassifierBasic
+from learners.random_selection import ALClassifierRandomSelection
+from tools.functions import convert_to_onehot
 
 # Learners
 # Active Learning Classifier
@@ -30,12 +32,12 @@ class Controller:
             self.learner = ALClassifierBasic(chemical_space.shape, chemical_space.reactants_dim)
         if learner_type == RAND:
             self.learner = ALClassifierRandomSelection(chemical_space.shape)
-        self.scoring_function = BINARY_COUNT
+        self.scoring_function = THRESHOLDED_COUNT(.5)
         self.batch_size = batch_size
         self.max_experiments = max_experiments
         self.metrics = {'max_experiments': self.max_experiments, 'batch_size': self.batch_size,}
         if chemical_space.descriptors == None:
-            self.all_points_featurized = [self.convert_to_onehot(point) for point in chemical_space.all_points]
+            self.all_points_featurized = [convert_to_onehot(self.chemical_space.shape, point) for point in chemical_space.all_points]
         if known_points == None:
             self.seed_len = 49
             self.known_points = []
@@ -43,25 +45,8 @@ class Controller:
             self.seed_len = 0
             self.known_points = known_points
         self.optimization_runs = 0
-
-    def convert_to_onehot(self, point):
-        onehot = np.zeros(np.sum(self.chemical_space.shape))
-        for i, p in enumerate(point):
-            onehot[int(p + np.sum(self.chemical_space.shape[:i]))] = 1
-        return onehot
-    
-    def convert_from_onehot(self, onehot):
-        point = []
-        num = 0
-        shape_counter = 0
-        for i in range(len(onehot)):
-            if onehot[i] == 1:
-                point.append(num)
-            num += 1
-            if num >= self.chemical_space.shape[shape_counter]:
-                num = 0
-                shape_counter += 1
-        return point
+        date_str = f"{dt.datetime.now()}"
+        self.date_str = date_str[:10] +"_"+ date_str[11:19]
     
     def initial_seed(self, n, sampling_method:int = LHS) -> list:
         if sampling_method == KPP:
@@ -104,8 +89,8 @@ class Controller:
 
         seed, seed_vals, seed_attempts = self.get_initial_seed(self.seed_len)
 
-        metrics = {'accuracy': [], 'precision': [], 'recall': [], 
-                   'best_set': [], 'coverage': [], 
+        metrics = {'cutoff': cutoff, 'accuracy': [], 'precision': [], 'recall': [], 
+                   'best_sets': [], 'coverages': [], 
                    'points_suggested': [seed], 'certainties':[[.5 for i in range(len(seed))]]}
 
         x = None
@@ -114,6 +99,7 @@ class Controller:
         next_points = np.array(seed)
         known_idxs = [self.convert_point_to_idx(point) for point in next_points]
 
+        # for a classifier, the predicted surface is the probability of the positive class
         predicted_surface:SpaceMatrix
         best_set = []
         last_change = 0
@@ -127,37 +113,37 @@ class Controller:
             # measured_yields.update({tuple(next_points[i]): measurement[i] for i in range(len(next_points))})
 
             if (x is None) and (y is None):
-                x = [self.convert_to_onehot(point) for point in next_points]
+                x = [convert_to_onehot(self.chemical_space.shape, point) for point in next_points]
                 y = measurement
             else:
-                x = np.append(x, [self.convert_to_onehot(point) for point in next_points], axis=0)
+                x = np.append(x, [convert_to_onehot(self.chemical_space.shape, point) for point in next_points], axis=0)
                 y =  np.append(y, measurement, axis=0)
 
             num_experiments_run += len(measurement)
             self.learner.fit(x, y)
-            
-            uncertainty, predicted_surface = self.learner.predict(np.array(self.all_points_featurized))
 
-            accuracy, precicion, recall = self.chemical_space.score_classifier_prediction(uncertainty, cutoff)
+            all_points_uncertainty, predicted_surface, next_points, certainties = self.learner.suggest_next_n_points(np.array(self.all_points_featurized), self.batch_size, known_idxs)
+            known_idxs = known_idxs + next_points
+            next_points = [self.chemical_space.all_points[i] for i in next_points]
 
-            predicted_set, coverage = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 3, 1)
-            predicted_set = predicted_set[0]
-            coverage = coverage[0]
+            accuracy, precicion, recall = self.chemical_space.score_classifier_prediction(all_points_uncertainty, cutoff)
+
+            predicted_sets_1, coverages_1 = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 1, 3)
+            predicted_sets_2, coverages_2 = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 2, 3)
+            predicted_sets, coverages = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 3, 3)
+            predicted_set = predicted_sets[0]
+            coverage = coverages[0]
             if predicted_set != best_set:
                 best_set = predicted_set
                 last_change = 0
             else:
                 last_change += 1
-
-            next_points, certainties = self.learner.suggest_next_n_points(self.batch_size, known_idxs)
-            known_idxs = known_idxs + next_points
-            next_points = [self.chemical_space.all_points[i] for i in next_points]
             
             metrics['accuracy'].append(accuracy)
             metrics['precision'].append(precicion)
             metrics['recall'].append(recall)
-            metrics['best_set'].append(best_set)
-            metrics['coverage'].append(coverage)
+            metrics['best_sets'].append([predicted_sets_1, predicted_sets_2, predicted_sets])
+            metrics['coverages'].append([coverages_1, coverages_2, coverages])
             metrics['points_suggested'].append(next_points)
             metrics['certainties'].append(certainties)
 
@@ -167,6 +153,8 @@ class Controller:
 
         if save_to_file:
             self.save_optimization_run_metrics()
+            self.plot_metrics(self.optimization_runs)
+            self.plot_coverage(self.optimization_runs)
         
         self.optimization_runs += 1
 
@@ -174,30 +162,65 @@ class Controller:
 
         return best_set, coverage
     
-    def do_repeats(self, n_repeats:int, cutoff:int):
+    def do_repeats(self, n_repeats:int, cutoff:float):
         for i in range(n_repeats):
             self.optimize(cutoff)
         self.save_metrics_to_pkl()
     
     def save_metrics_to_pkl(self)->None:
-        date_str = f"{dt.datetime.now()}"
-        date_str = date_str[:10] +"_"+ date_str[11:19]
-        os.makedirs(f'metrics/{self.chemical_space.dataset_name}', exist_ok = True) 
-        with open(f"metrics/{self.chemical_space.dataset_name}/metrics_{date_str}.pkl", "wb+") as f:
+        # date_str = f"{dt.datetime.now()}"
+        # date_str = date_str[:10] +"_"+ date_str[11:19]
+        os.makedirs(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}', exist_ok = True) 
+        with open(f"metrics/{self.chemical_space.dataset_name}/{self.date_str}/metrics_{self.date_str}.pkl", "wb+") as f:
             pickle.dump(self.metrics, f)
         
     def save_optimization_run_metrics(self, key=None)->None:
-        date_str = f"{dt.datetime.now()}"
-        date_str = date_str[:10] +"_"+ date_str[11:19]
         if key == None:
             key = self.optimization_runs
         item = self.metrics[key]
-        os.makedirs(f'metrics/{self.chemical_space.dataset_name}', exist_ok = True) 
+        os.makedirs(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}', exist_ok = True) 
         if not(type(item) is dict):
-            with open(f"metrics/{self.chemical_space.dataset_name}/metrics_{date_str}_{key}.txt", "w+") as f:
+            with open(f"metrics/{self.chemical_space.dataset_name}/{self.date_str}/metrics_{key}.txt", "w+") as f:
                 f.write(f"{key}: {item}\n")
             return
-        with open(f"metrics/{self.chemical_space.dataset_name}/metrics_{date_str}_{key}.txt", "w+") as f:
+        with open(f"metrics/{self.chemical_space.dataset_name}/{self.date_str}/metrics_{key}.txt", "w+") as f:
             for key, val in self.metrics[key].items():
                 f.write(f"{key}: {val}\n")
+
+    def plot_metrics(self, repeat_no:int=None)->None:
+        if repeat_no == None:
+            # TODO: implement plotting of all repeats, show average and std/confidence intervals
+            return
+        metrics = self.metrics[repeat_no]
+        points_measured = [self.seed_len]+[self.batch_size*i for i in range(len(metrics['accuracy']))]
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15,5))
+        ax1.plot(metrics['accuracy'])
+        ax1.set_title('Accuracy')
+        ax1.set_xlabel('Batch')
+        ax2.plot(metrics['precision'])
+        ax2.set_title('Precision')
+        ax2.set_xlabel('Batch')
+        ax3.plot(metrics['recall'])
+        ax3.set_title('Recall')
+        ax3.set_xlabel('Batch')
+        plt.savefig(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}/metrics_{repeat_no}.png')
+    
+    def plot_coverage(self, repeat_no:int=None)->None:
+        total_reactions = np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:])
+        if repeat_no == None:
+            # TODO
+            return
+        coverages = np.array(self.metrics[repeat_no]['coverages'])
+        best_1 = coverages[:,0][:,0]/total_reactions
+        best_2 = coverages[:,1][:,0]/total_reactions
+        best_3 = coverages[:,2][:,0]/total_reactions
+        xs = np.arange(len(best_1))
+        plt.plot(xs, best_1, xs, best_2, xs, best_3)
+        plt.title('Coverage of Best Sets')
+        plt.xlabel('Batch')
+        plt.ylabel('Coverage')
+        plt.legend(['Best Single Condtion', 'Best Set of at most 2 Condtions', 'Best Set of at most 3 Conditions'])
+        plt.savefig(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}/coverages_{repeat_no}.png')
+
+
  

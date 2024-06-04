@@ -18,6 +18,7 @@ class SpaceMatrix:
         '''
         self.mat = matrix
         self.shape = self.mat.shape
+        #TODO: implement caching of condition coverage
 
     '''Allow for indexing and slicing of the matrix'''
     def __getitem__(self, key:tuple) -> np.ndarray:
@@ -87,15 +88,32 @@ class SpaceMatrix:
         max_set_size: int, the maximum number of conditions to include in a set
         num_sets: int, the number of sets to return
 
-        returns: list of condition tuples, list of floats, the best condition sets and their corresponding scores
+        returns: list of condition tuples, list of floats, the best condition sets and their corresponding scores in descending order of coverage
+        ignores sets that contain a subset with the same coverage
         '''
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
         coverages = [self.score_coverage(set, scoring_function) for set in possible_combos]
         if max_set_size > 1:
             best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, num_sets)
-            possible_combos = possible_combos + best_condition_sets_smaller
-            coverages = coverages + best_coverages_smaller
-        best_set_idxs = np.argsort(coverages)[-1*num_sets:]
+            possible_combos = possible_combos + best_condition_sets_smaller[::-1]
+            coverages = coverages + best_coverages_smaller[::-1]
+        set_idxs = np.array(coverages).argsort(kind = 'stable')
+        best_set_idxs = np.zeros(num_sets, dtype=int)
+        i = 0
+        set_idx = len(set_idxs)-1
+        sets_to_remove = []
+        while i < num_sets:
+            # if set does not contain a set already seen, add it
+            unique_set = np.all([not (s <= set(possible_combos[set_idxs[set_idx]])) for s in sets_to_remove])
+            if unique_set:
+                # if set is smaller than max_set_size, add it to sets to remove
+                if len(possible_combos[set_idxs[set_idx]]) < max_set_size:
+                    sets_to_remove.append(set(possible_combos[set_idxs[set_idx]]))
+                best_set_idxs[i] = set_idxs[set_idx]
+                i += 1
+            set_idx -= 1
+            if set_idx > 0 and coverages[set_idxs[set_idx]] != coverages[set_idxs[set_idx + 1]]:
+                sets_to_remove = []
         best_sets = [possible_combos[i] for i in best_set_idxs]
         best_coverages = [coverages[i] for i in best_set_idxs]
         return best_sets, best_coverages

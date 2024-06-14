@@ -5,6 +5,5 @@ __pycache__/
 datasets/raw_datasets/*
 datasets/Toy_Datasets/toy*
 datasets/Toy_Datasets/small_toy.csv
-metrics*.txt
+metrics/*
 old_files/*
-*.pkl

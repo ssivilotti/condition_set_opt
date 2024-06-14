@@ -4,8 +4,8 @@ import itertools
 # scoring functions for condition set coverage of a chemical space
 # more complex scoring functions can be added
 # the last argument is an np.ndarray of the maximum yield surface of the conditions
-THRESHOLDED_COUNT = lambda a: lambda x: np.sum(x > a)
-BINARY_COUNT = lambda x: np.sum(x)
+THRESHOLDED_COUNT = lambda s: lambda a: lambda x: (np.sum(x > a))/s
+BINARY_COUNT = lambda s: lambda x: np.sum(x)/s
 class SpaceMatrix:
     def __init__(self, matrix:np.ndarray) -> None:
         '''
@@ -66,7 +66,7 @@ class SpaceMatrix:
         returns:
         int, the number of reactant combinations that meet the yield threshold for the given set of conditions
         '''
-        return self.score_coverage(condition_set, THRESHOLDED_COUNT(yield_threshold))
+        return self.score_coverage(condition_set, THRESHOLDED_COUNT(np.prod(self.shape[len(condition_set[0]):]))(yield_threshold))
     
     def score_coverage(self, condition_set:tuple, scoring_function) -> float:
         '''
@@ -80,7 +80,7 @@ class SpaceMatrix:
         yield_coverage_surface = self.get_condition_coverage(condition_set)
         return scoring_function(yield_coverage_surface)
 
-    def best_condition_sets(self, condition_options:list, scoring_function, max_set_size:int=1, num_sets:int=10) -> tuple:
+    def best_condition_sets(self, condition_options:list, scoring_function, max_set_size:int=1, num_sets:int=None, check_subsets=True, ignore_reduntant_sets=True) -> tuple:
         '''
         @params:
         condition_options: list of tuples of integers, representing all possible or a subset of conditions in the chemical space
@@ -93,16 +93,25 @@ class SpaceMatrix:
         '''
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
         coverages = [self.score_coverage(set, scoring_function) for set in possible_combos]
-        if max_set_size > 1:
-            best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, num_sets)
+        if not check_subsets:
+            ignore_reduntant_sets = True
+        elif max_set_size > 1:
+            best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, num_sets, ignore_reduntant_sets=ignore_reduntant_sets)
             possible_combos = possible_combos + best_condition_sets_smaller[::-1]
             coverages = coverages + best_coverages_smaller[::-1]
+        
         set_idxs = np.array(coverages).argsort(kind = 'stable')
-        best_set_idxs = np.zeros(num_sets, dtype=int)
+        if num_sets == None:
+                num_sets = len(set_idxs)
+        if not ignore_reduntant_sets:
+            best_set_idxs = set_idxs[-num_sets:][::-1]
+            return [possible_combos[i] for i in best_set_idxs], [coverages[i] for i in best_set_idxs]
+        
         i = 0
         set_idx = len(set_idxs)-1
         sets_to_remove = []
-        while i < num_sets:
+        best_set_idxs = np.zeros(num_sets, dtype=int)
+        while i < num_sets and set_idx >= 0:
             # if set does not contain a set already seen, add it
             unique_set = np.all([not (s <= set(possible_combos[set_idxs[set_idx]])) for s in sets_to_remove])
             if unique_set:
@@ -114,6 +123,25 @@ class SpaceMatrix:
             set_idx -= 1
             if set_idx > 0 and coverages[set_idxs[set_idx]] != coverages[set_idxs[set_idx + 1]]:
                 sets_to_remove = []
+        best_set_idxs = best_set_idxs[:i]
         best_sets = [possible_combos[i] for i in best_set_idxs]
         best_coverages = [coverages[i] for i in best_set_idxs]
         return best_sets, best_coverages
+    
+    def rank_conditions(self, condition_options:list, max_set_size:int) -> dict:
+        '''
+        @params:
+        condition_options: list of tuples of integers, representing all possible or a subset of conditions in the chemical space
+        
+        returns:
+        list of conditions and list of coverages
+        list of conditions is a list of tuples, the conditions in descending order of coverage
+        '''
+        conditions = [(c,) for c in condition_options]
+        for set_size in range(2, max_set_size+1):
+            conditions += list(itertools.combinations(condition_options, set_size))
+        rank_function = lambda x: np.sum(x) # TODO: make this more sophisticated?
+        coverages = [self.score_coverage(set, rank_function) for set in conditions]
+        best_cond_idxs = np.array(coverages).argsort(kind = 'stable')
+        cond_to_rank_map = {conditions[idx]: i for i, idx in enumerate(best_cond_idxs[::-1])}
+        return cond_to_rank_map

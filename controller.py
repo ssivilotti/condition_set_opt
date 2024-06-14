@@ -10,7 +10,7 @@ from space_mat import THRESHOLDED_COUNT
 from learners.learner import Learner
 from learners.al_classifier import ALClassifierBasic
 from learners.random_selection import ALClassifierRandomSelection
-from tools.functions import convert_to_onehot
+from tools.functions import convert_to_onehot, convert_point_to_idx
 
 # Learners
 # Active Learning Classifier
@@ -26,13 +26,13 @@ LHS = 1
 
 # handles featurization, chosing optimal sets and communication between the active learning algorithm and the chemical space
 class Controller:
-    def __init__(self, chemical_space:ChemicalSpace, learner_type:int=ALC, batch_size:int=10, max_experiments:int=1000, known_points=None) :
+    def __init__(self, chemical_space:ChemicalSpace, batch_size:int=10, max_experiments:int=1000, max_set_size:int=3, learner_type:int=ALC, known_points=None) :
         self.chemical_space = chemical_space
         if learner_type == ALC:
-            self.learner = ALClassifierBasic(chemical_space.shape, chemical_space.reactants_dim)
+            self.learner = ALClassifierBasic(chemical_space.shape)
         if learner_type == RAND:
             self.learner = ALClassifierRandomSelection(chemical_space.shape)
-        self.scoring_function = THRESHOLDED_COUNT(.5)
+        self.scoring_function =  THRESHOLDED_COUNT(np.prod(chemical_space.shape[chemical_space.conditions_dim:]))(.5)
         self.batch_size = batch_size
         self.max_experiments = max_experiments
         self.metrics = {'max_experiments': self.max_experiments, 'batch_size': self.batch_size,}
@@ -47,6 +47,8 @@ class Controller:
         self.optimization_runs = 0
         date_str = f"{dt.datetime.now()}"
         self.date_str = date_str[:10] +"_"+ date_str[11:19]
+        self.max_set_size = max_set_size
+        self.cond_to_rank_map = chemical_space.yield_surface.rank_conditions(chemical_space.all_conditions, max_set_size)
     
     def initial_seed(self, n, sampling_method:int = LHS) -> list:
         if sampling_method == KPP:
@@ -74,17 +76,10 @@ class Controller:
             seed_attempts += 1
         return seed, seed_vals, seed_attempts
     
-    def convert_point_to_idx(self, point):
-        idx = 0
-        for i, n in enumerate(point):
-            idx += n
-            if i < len(self.chemical_space.shape) - 1:
-                idx *= self.chemical_space.shape[i+1]            
-            # np.prod(self.chemical_space.shape[i+1:])
-        return idx
-    
     def optimize(self, cutoff:float, save_to_file=False)->dict:
         # measured_yields = {}
+        self.learner.reset()
+
         num_experiments_run:int = 0
 
         seed, seed_vals, seed_attempts = self.get_initial_seed(self.seed_len)
@@ -97,7 +92,7 @@ class Controller:
         y = None
 
         next_points = np.array(seed)
-        known_idxs = [self.convert_point_to_idx(point) for point in next_points]
+        known_idxs = [convert_point_to_idx(self.chemical_space.shape, point) for point in next_points]
 
         # for a classifier, the predicted surface is the probability of the positive class
         predicted_surface:SpaceMatrix
@@ -107,7 +102,7 @@ class Controller:
 
         self.learner.initialize_model()
 
-        while (not(self.learner.done) or (num_experiments_run < len(seed) + self.batch_size)) and (num_experiments_run < self.max_experiments):
+        while (not(self.learner.done) or (num_experiments_run < len(seed) + 3*(self.batch_size))) and (num_experiments_run < self.max_experiments):
             # measure yields for uncertain points
             measurement = np.array([self.chemical_space.measure_reaction_yield(next_points[i]) > cutoff for i in range(len(next_points))])
             # measured_yields.update({tuple(next_points[i]): measurement[i] for i in range(len(next_points))})
@@ -130,7 +125,7 @@ class Controller:
 
             predicted_sets_1, coverages_1 = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 1, 3)
             predicted_sets_2, coverages_2 = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 2, 3)
-            predicted_sets, coverages = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, 3, 3)
+            predicted_sets, coverages = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, self.max_set_size, 3)
             predicted_set = predicted_sets[0]
             coverage = coverages[0]
             if predicted_set != best_set:
@@ -157,8 +152,6 @@ class Controller:
             self.plot_coverage(self.optimization_runs)
         
         self.optimization_runs += 1
-
-        self.learner.reset()
 
         return best_set, coverage
     
@@ -205,22 +198,34 @@ class Controller:
         ax3.set_xlabel('Batch')
         plt.savefig(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}/metrics_{repeat_no}.png')
     
-    def plot_coverage(self, repeat_no:int=None)->None:
-        total_reactions = np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:])
+    def plot_set_preds(self, repeat_no:int=None)->None:
+        ax1:plt.Axes
+        ax2:plt.Axes
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
         if repeat_no == None:
             # TODO
             return
         coverages = np.array(self.metrics[repeat_no]['coverages'])
-        best_1 = coverages[:,0][:,0]/total_reactions
-        best_2 = coverages[:,1][:,0]/total_reactions
-        best_3 = coverages[:,2][:,0]/total_reactions
-        xs = np.arange(len(best_1))
-        plt.plot(xs, best_1, xs, best_2, xs, best_3)
-        plt.title('Coverage of Best Sets')
-        plt.xlabel('Batch')
-        plt.ylabel('Coverage')
-        plt.legend(['Best Single Condtion', 'Best Set of at most 2 Condtions', 'Best Set of at most 3 Conditions'])
+        best_sets = self.metrics[repeat_no]['best_sets']
+        # best_1 = coverages[:,0][:,0]
+        # best_2 = coverages[:,1][:,0]
+        best_3 = coverages[:,2][:,0]
+        # best1_actual = [self.chemical_space.yield_surface.count_coverage(set) for set in best_sets[:,0][:,1]]
+        # best2_actual = [self.chemical_space.yield_surface.count_coverage(set) for set in best_sets[:,1][:,1]]
+        best_pred_sets = [s[0] for s in [sets[2] for sets in best_sets]]
+        best3_actual = [self.chemical_space.yield_surface.count_coverage(set, self.metrics[repeat_no]['cutoff']) for set in best_pred_sets]
+        xs = np.arange(len(best_3))
+        ax1.plot(xs, best_3, xs, best3_actual)
+        # plt.plot(xs, best_1, xs, best_2, xs, best_3, xs, best1_actual, xs, best2_actual, xs, best3_actual)
+        ax1.set_title('Coverage of Best Predicted Sets')
+        ax1.set_xlabel('Batch')
+        ax1.set_ylabel('Coverage')
+        ax1.legend(['Predicted Coverage', 'Actual Coverage'])
+        set_ranks = [self.cond_to_rank_map[set] for set in best_pred_sets]
+        ax2.plot(xs, set_ranks)
+        ax2.set_title('Rank of Best Predicted Sets')
+        ax2.set_xlabel('Batch')
+        ax2.set_ylabel('Rank')
+        ax2.set_yscale('log')
+        # plt.legend(['Best Single Condtion', 'Best Set of at most 2 Condtions', 'Best Set of at most 3 Conditions'])
         plt.savefig(f'metrics/{self.chemical_space.dataset_name}/{self.date_str}/coverages_{repeat_no}.png')
-
-
- 

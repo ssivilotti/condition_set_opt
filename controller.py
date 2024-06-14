@@ -26,8 +26,9 @@ LHS = 1
 
 # handles featurization, chosing optimal sets and communication between the active learning algorithm and the chemical space
 class Controller:
-    def __init__(self, chemical_space:ChemicalSpace, batch_size:int=10, max_experiments:int=1000, max_set_size:int=3, learner_type:int=ALC, known_points=None) :
+    def __init__(self, chemical_space:ChemicalSpace, yield_cutoff:float, batch_size:int=10, max_experiments:int=1000, max_set_size:int=3, learner_type:int=ALC, known_points=None) :
         self.chemical_space = chemical_space
+        self.cutoff = yield_cutoff
         if learner_type == ALC:
             self.learner = ALClassifierBasic(chemical_space.shape)
         if learner_type == RAND:
@@ -76,7 +77,8 @@ class Controller:
             seed_attempts += 1
         return seed, seed_vals, seed_attempts
     
-    def optimize(self, cutoff:float, save_to_file=False)->dict:
+    def optimize(self, save_to_file=False)->tuple:
+        cutoff = self.cutoff
         # measured_yields = {}
         self.learner.reset()
 
@@ -155,9 +157,9 @@ class Controller:
 
         return best_set, coverage
     
-    def do_repeats(self, n_repeats:int, cutoff:float):
+    def do_repeats(self, n_repeats:int):
         for i in range(n_repeats):
-            self.optimize(cutoff)
+            self.optimize()
         self.save_metrics_to_pkl()
     
     def save_metrics_to_pkl(self)->None:
@@ -213,7 +215,7 @@ class Controller:
         # best1_actual = [self.chemical_space.yield_surface.count_coverage(set) for set in best_sets[:,0][:,1]]
         # best2_actual = [self.chemical_space.yield_surface.count_coverage(set) for set in best_sets[:,1][:,1]]
         best_pred_sets = [s[0] for s in [sets[2] for sets in best_sets]]
-        best3_actual = [self.chemical_space.yield_surface.count_coverage(set, self.metrics[repeat_no]['cutoff']) for set in best_pred_sets]
+        best3_actual = [self.chemical_space.yield_surface.count_coverage(set, self.cutoff) for set in best_pred_sets]
         xs = np.arange(len(best_3))
         ax1.plot(xs, best_3, xs, best3_actual)
         # plt.plot(xs, best_1, xs, best_2, xs, best_3, xs, best1_actual, xs, best2_actual, xs, best3_actual)

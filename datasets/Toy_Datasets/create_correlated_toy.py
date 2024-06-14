@@ -49,7 +49,7 @@ def create_correlated_surface():
     temp_surface = temp_surface + noise
     surface = temp_surface - np.amin(temp_surface, axis=(0,1,2))
     print(np.amax(surface, axis=(0,1,2)))
-    surface = surface/np.amax(surface, axis=(0,1,2))
+    surface = (surface/np.amax(surface, axis=(0,1,2))) * 100
 
 # print(noise)
 

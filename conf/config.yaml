@@ -1,0 +1,25 @@
+defaults:
+  - override hydra/launcher: submitit_slurm
+
+n_repeats: 100
+batch_size: 10
+dataset: ???
+learner_type: ???
+backup_similarity: ???
+
+hydra:
+  job:
+    chdir: True
+  launcher:
+    timeout_min: 10080
+    cpus_per_task: 4
+    partition: mmli
+    additional_parameters: { nodelist: ccc0309 }
+    name: cond_set_opt
+  sweep:
+    subdir: ${hydra.job.override_dirname}
+  verbose: true
+  sweeper:
+    params:
+      dataset: buchwald_hartwig, aryl_scope, borylation, deoxy
+      learner_type: 0, -1

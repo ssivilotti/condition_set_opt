@@ -72,7 +72,7 @@ class ChemicalSpace:
         tuple of floats, the accuracy, precision, and recall of the classifier prediction
         '''
         y_pred = y_pred.T[1] > .5
-        y_true = self._y_true > cutoff
+        y_true = self._y_true >= cutoff
         return accuracy_score(y_true, y_pred), precision_score(y_true, y_pred), recall_score(y_true, y_pred)
 
     def best_condition_sets(self, yield_threshold:float, max_set_size:int=1, num_sets:int=10) -> tuple:
@@ -154,10 +154,10 @@ class ChemicalSpace:
             conditions = itertools.combinations(self.all_conditions, size)
             coverages.append([self.yield_surface.count_coverage(condition, cutoff) for condition in conditions])
         plt.hist(coverages, bins=20, histtype='bar', label=[f"Sets of size {size}" for size in set_sizes], stacked=False, log = True)
-        plt.xlabel('Coverage')
-        plt.ylabel('Number of Sets')
+        plt.xlabel('Coverage', fontsize=15)
+        plt.ylabel('Number of Sets', fontsize=15)
         plt.legend()
-        plt.title('Reaction Space Coverage Distribution over Condition Sets')
+        plt.title('Reaction Space Coverage Distribution over Condition Sets', fontsize=15)
 
     def plot_combination_of_individual(self, cutoff:float)->None:
         ax1:plt.Axes
@@ -187,17 +187,11 @@ class ChemicalSpace:
         ax2.plot(range(len(ordered_conds)), avg_coverage, label=['Average Coverage'])
         ax2.plot(range(len(ordered_conds)), coverage_std, label=['Coverage Std'])
 
-    # TODO
-    def plot_reaction_difficulty(self, cutoff:float)->None:
-        pass
-
     # TODO: fix for buchwald hartwig
     def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_conditions=None)->None:
         ordered_conds, coverage = self.best_condition_sets(cutoff, 1, None)
         conds_condensed = [cond[0] for cond in ordered_conds]
         # cond_idx = np.argsort(conds_condensed)
-        # print(ordered_conds)
-        # print(cond_idx)
         ordered_sets, set_coverage = self.best_condition_sets(cutoff, set_size, len(self.all_conditions))
         combination_mat = np.full((len(self.all_conditions) + 1, len(self.all_conditions)), np.nan)
         for i, set in enumerate(ordered_sets):
@@ -218,57 +212,65 @@ class ChemicalSpace:
 
     def max_possible_coverage(self, cutoff:float)->int:
         return self.yield_surface.count_coverage(self.all_conditions, cutoff)
-    
-    def plot_coverage_over_yield(self)->None:
-        ax1:plt.Axes
-        ax2:plt.Axes
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        # plot of coverage vs yield
+
+    def get_yield_coverage(self)->tuple:
         max_yield_surface = np.amax(self.yield_surface.mat.T, axis=tuple(range(self.reactants_dim, len(self.shape))))
         yields = np.sort(max_yield_surface.flatten())[::-1]
         coverages = range(1, len(yields) + 1)/(np.prod(self.shape[self.conditions_dim:]))
-        # idx = int(np.floor(.6 * (np.prod(self.shape[self.conditions_dim:]))))
-        idx = int(np.floor(.6 * (len(yields))))
-        y = yields[idx]
-
-        # plot of % of successful reactions vs yield
+        for i in range(2, len(yields)+1):
+            if yields[1-i] == yields[-i]:
+                coverages[-i] = coverages[1-i]
+        return yields, coverages
+    
+    def get_yield_success(self)->tuple:
         all_yields = np.sort(self.yield_surface.mat.flatten())[::-1]
         successful_reactions = range(1, len(all_yields) + 1)/(np.prod(self.shape))
+        return all_yields, successful_reactions
+    
+    def get_individual_conditions_coverage(self)->tuple:
+        cond_surfaces = [np.sort(self.yield_surface.get_condition_surface(cond).flatten())[::-1] for cond in self.all_conditions]
+        cond_cov_max_yields = np.amax(cond_surfaces, axis=0)
+        coverage = range(1, len(cond_cov_max_yields) + 1)/(np.prod(self.shape[self.conditions_dim:]))
+        for i in range(2,len(cond_cov_max_yields)+1):
+            if cond_cov_max_yields[-i] == cond_cov_max_yields[1-i]:
+                coverage[-i] = coverage[1-i]
+        return cond_cov_max_yields, coverage
+    
+    def plot_coverage_over_yield(self, coverage_threshold = .6)->None:
+        ax1:plt.Axes;ax2:plt.Axes
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        yields, coverages = self.get_yield_coverage()
+        all_yields, successful_reactions = self.get_yield_success()
+        cond_yields, cond_coverages = self.get_individual_conditions_coverage()
+        # idx = int(np.floor(.6 * (np.prod(self.shape[self.conditions_dim:]))))
+        idx = int(np.floor(coverage_threshold * (len(yields))))
+        y = yields[idx]
+
         all_idx = len(all_yields) - np.searchsorted(all_yields[::-1], y, side='right')
-        print(all_idx)
-        print(y)
-        print(all_yields[all_idx])
-
         # find location where 50% of reactions are successful
-        all_idx2 = int(np.floor(.5 * (len(all_yields))))
-        y2 = all_yields[all_idx2]
-        idx2 = len(yields) - max(np.searchsorted(yields[::-1], y2, side='left'), 1) # handle case where y2 is less than the minimum yield of the max yield surface
-        if yields[idx2] < y2 and idx2 > 0:
-            idx2 -= 1
-        print(idx2)
-        print(y2)
-        print(yields[idx2])
+        # all_idx2 = int(np.floor(.5 * (len(all_yields))))
+        # y2 = all_yields[all_idx2]
+        # idx2 = len(yields) - max(np.searchsorted(yields[::-1], y2, side='left'), 1) # handle case where y2 is less than the minimum yield of the max yield surface
+        # if yields[idx2] < y2 and idx2 > 0:
+        #     idx2 -= 1
 
-        ax1.plot(yields, coverages)
+        # plot of coverage vs yield
+        ax1.plot(yields, coverages, cond_yields, cond_coverages)
         # ax1.plot([y, y], [coverages[idx], 0], 'k-')
         # ax1.plot([min(y2,yields[-1]), yields[0]], [coverages[idx]]*2, 'k-')
-        ax1.scatter([y, y2], [coverages[idx], coverages[idx2]])
+        # ax1.scatter([y, y2], [coverages[idx], coverages[idx2]])
+        ax1.scatter([y], [coverages[idx]])
         ax1.annotate(f'{y:.2f}% yield,\n{coverages[idx]:.3f} coverage', (y, coverages[idx]), textcoords="offset points", xytext=(0,10), ha='left')
-        # ax1.plot([y2, y2], [coverages[idx2], 0], 'k-')
-        # ax1.plot([min(y2,yields[-1]), yields[0]], [coverages[idx2]]*2, 'k-')
-        ax1.annotate(f'{y2:.2f}% yield,\n{coverages[idx2]:.3f} coverage', (y2, coverages[idx2]), textcoords="offset points", xytext=(0,10), ha='left')
+        # ax1.annotate(f'{y2:.2f}% yield,\n{coverages[idx2]:.3f} coverage', (y2, coverages[idx2]), textcoords="offset points", xytext=(0,10), ha='left')
         ax1.set_xlabel('Yield')
         ax1.set_ylabel('Coverage')
         ax1.set_title('Coverage vs Yield')
-
+        # plot of % of successful reactions vs yield
         ax2.plot(all_yields, successful_reactions)
-        # ax2.plot([y, y], [successful_reactions[all_idx], 0], 'k-')
-        # ax2.plot(all_yields, [successful_reactions[all_idx]]*len(all_yields), 'k-')
-        ax2.scatter([y, y2], [successful_reactions[all_idx], successful_reactions[all_idx2]])
+        # ax2.scatter([y, y2], [successful_reactions[all_idx], successful_reactions[all_idx2]])
+        ax2.scatter([y], [successful_reactions[all_idx]])
         ax2.annotate(f'{y:.2f}% yield\n{successful_reactions[all_idx]:.3f} reactions successful', (y, successful_reactions[all_idx]), textcoords="offset points", xytext=(0,10), ha='left')
-        # ax2.plot([y2, y2], [successful_reactions[all_idx2], 0], 'k-')
-        # ax2.plot(all_yields, [successful_reactions[all_idx2]]*len(all_yields), 'k-')
-        ax2.annotate(f'{y2:.2f}% yield\n{successful_reactions[all_idx2]:.3f} reactions successful', (y2, successful_reactions[all_idx2]), textcoords="offset points", xytext=(0,10), ha='left')
+        # ax2.annotate(f'{y2:.2f}% yield\n{successful_reactions[all_idx2]:.3f} reactions successful', (y2, successful_reactions[all_idx2]), textcoords="offset points", xytext=(0,10), ha='left')
         ax2.set_xlabel('Yield')
         ax2.set_ylabel('Successful Reactions')
         ax2.set_title('Successful Reactions vs Yield')

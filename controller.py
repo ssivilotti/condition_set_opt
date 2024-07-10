@@ -46,15 +46,15 @@ class Controller:
         self.cond_to_rank_map = chemical_space.yield_surface.rank_conditions(chemical_space.all_conditions, max_set_size, yield_cutoff)
         self.init_learner(learner_type)
     
-    def init_learner(self, learner_type)->None:
+    def init_learner(self, learner_type, num_cpus=None)->None:
         if learner_type == EXPLORE:
-            self.learner = ALClassifierBasic(self.chemical_space.shape, self.num_cpus)
-        if learner_type == RAND:
-            self.learner = ALClassifierRandomSelection(self.chemical_space.shape, self.num_cpus)
-        if learner_type == EXPEXP:
-            self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=self.num_cpus)
-        if learner_type == EXPLOIT:
-            self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=self.num_cpus)
+            self.learner = ALClassifierBasic(self.chemical_space.shape, num_cpus)
+        elif learner_type == RAND:
+            self.learner = ALClassifierRandomSelection(self.chemical_space.shape, num_cpus)
+        elif learner_type == EXPEXP:
+            self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus)
+        elif learner_type == EXPLOIT:
+            self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus)
         else:
             raise ValueError("Invalid learner type input")
 

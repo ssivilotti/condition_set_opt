@@ -15,18 +15,18 @@ def run(cfg: DictConfig) -> None:
     if cfg.dataset == 'aryl_scope':
         aryl_scope = ChemicalSpace(['ligand_name'], ['electrophile_id', 'nucleophile_id'], f'{original_path}/datasets/real_datasets/aryl-scope-ligand.csv')
         aryl_scope.titles = ['Ligand', 'Electrophile', 'Nucleophile']
-        optimizer = Controller(aryl_scope,21.66, batch_size=cfg.batch_size, max_experiments=1000, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path)
+        optimizer = Controller(aryl_scope,21.66, batch_size=cfg.batch_size, max_experiments=1000, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path, num_cpus=cfg.num_cpus)
     elif cfg.dataset == 'borylation':
         borylation = ChemicalSpace(['ligand_name', 'solvent'], ['electrophile_id'], f'{original_path}/datasets/real_datasets/borylation.csv')
         borylation.titles = ['Ligand', 'Solvent', 'Electrophile']
-        optimizer = Controller(borylation, 77.24, batch_size=cfg.batch_size, max_experiments=1000, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path)
+        optimizer = Controller(borylation, 77.24, batch_size=cfg.batch_size, max_experiments=1000, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path, num_cpus=cfg.num_cpus)
     elif cfg.dataset == 'deoxy':
         deoxy = ChemicalSpace(['base_name', 'fluoride_name'], ['substrate_name'], f'{original_path}/datasets/real_datasets/deoxyf.csv')
         deoxy.titles = ['Base', 'Fluoride', 'Substrate']
-        optimizer = Controller(deoxy, 50, batch_size=cfg.batch_size, max_experiments=500, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path)
+        optimizer = Controller(deoxy, 50, batch_size=cfg.batch_size, max_experiments=500, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path, num_cpus=cfg.num_cpus)
     elif cfg.dataset == 'buchwald_hartwig':
         buchwald_hartwig = ChemicalSpace(['Catalyst','Solvent','Base'], ['Amine','Bromide'], f'{original_path}/datasets/real_datasets/buchwald-hartwig.csv')
-        optimizer = Controller(buchwald_hartwig, 26.89, batch_size=cfg.batch_size, max_experiments=1000, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path)
+        optimizer = Controller(buchwald_hartwig, 26.89, batch_size=cfg.batch_size, max_experiments=4500, early_stopping=False, learner_type=cfg.learner_type, output_dir=original_path, num_cpus=cfg.num_cpus)
     else:
         raise ValueError('Invalid dataset')
     

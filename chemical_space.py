@@ -166,7 +166,6 @@ class ChemicalSpace:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
         combination_mat = np.zeros((len(self.all_conditions), len(self.all_conditions)))
         ordered_conds = self.best_condition_sets(cutoff, 1, None)
-        print(ordered_conds)
         for c in range(len(ordered_conds)):
             for c2 in range(c, len(ordered_conds)):
                 combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c]['set'][0], ordered_conds[c2]['set'][0]), cutoff)
@@ -180,9 +179,7 @@ class ChemicalSpace:
         # # plt.yticks(range(len(ordered_conds)), ticks)
         ax1.set_title('Combinations of Individual Conditions')
         max_coverage = combination_mat.max(axis = 0)
-        print(max_coverage)
         avg_coverage = combination_mat.mean(axis = 0)
-        print(avg_coverage)
         coverage_std = combination_mat.std(axis = 0)
         ax2.plot(range(len(ordered_conds)), max_coverage, label=['Max Coverage'])
         ax2.plot(range(len(ordered_conds)), avg_coverage, label=['Average Coverage'])

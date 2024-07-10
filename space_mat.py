@@ -110,18 +110,20 @@ class SpaceMatrix:
         #     ranked_sets= self.best_set_cache[max_set_size]
         # else:
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
-        sets = np.array([(possible_combos[i], self.score_coverage(possible_combos[i], scoring_function)) for i in range(len(possible_combos))], dtype=[('set', 'O'), ('coverage', 'f4')])
+        sets = np.array([(s, self.score_coverage(s, scoring_function), -1*len(s)) for s in possible_combos], dtype=[('set', 'O'), ('coverage', 'f4'),('size', 'i4'),])
         if not check_subsets:
             ignore_reduntant_sets = True
         elif check_subsets and max_set_size > 1:
             smaller_sets = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, ignore_reduntant_sets=ignore_reduntant_sets)
-            sets = np.concatenate((sets, smaller_sets[::-1]), axis=0)
+            smaller_sets['size'] = -1*smaller_sets['size']
+            sets = np.concatenate((sets, smaller_sets[::-1]))
         # sort 
-        sets = sets.sort(kind = 'stable', order='coverage')
+        sets.sort(order=['coverage', 'size'])
+        sets['size'] = -1*sets['size']
         
         # end state: ranked_sets and ranked_covs are filled with corresponding values of all sets, sorted by coverage in descending order
         if num_sets == None:
-                num_sets = len(sets)
+            num_sets = len(sets)
         if not ignore_reduntant_sets:
             return sets[-num_sets:][::-1]
         

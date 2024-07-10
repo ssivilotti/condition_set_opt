@@ -18,6 +18,7 @@ class SpaceMatrix:
         '''
         self.mat = matrix
         self.shape = self.mat.shape
+        # self.best_set_cache = {}
         #TODO: implement caching of condition coverage
 
     '''Allow for indexing and slicing of the matrix'''
@@ -26,6 +27,7 @@ class SpaceMatrix:
     
     def __setitem__(self, key:tuple, value:np.ndarray) -> None:
         self.mat[key] = value
+        # self.best_set_cache = {}
 
     def __iter__(self):
         return iter(self.mat)
@@ -80,6 +82,8 @@ class SpaceMatrix:
         '''
         yield_coverage_surface = self.get_condition_coverage(condition_set)
         return scoring_function(yield_coverage_surface)
+    
+    # TODO: remove scoring function (if caching is implemented)
 
     def best_condition_sets(self, condition_options:list, scoring_function, max_set_size:int=1, num_sets:int=None, check_subsets=True, ignore_reduntant_sets=True) -> tuple:
         '''
@@ -94,42 +98,60 @@ class SpaceMatrix:
         returns: list of condition tuples, list of floats, the best condition sets and their corresponding scores in descending order of coverage
         ignores sets that contain a subset with the same coverage
         '''
+        # ranked_sets:np.ndarray # list of objects ("condition set": tuple, "coverage": float [0,1])
+        # if max_set_size in self.best_set_cache:
+        #     # if ignore_reduntant_sets in self.best_set_cache[max_set_size]:
+        #     #     if num_sets == None:
+        #     #         num_sets = len(set_idxs)
+        #     #     return self.best_set_cache[max_set_size][ignore_reduntant_sets][0][:num_sets], self.best_set_cache[max_set_size][ignore_reduntant_sets][1][:num_sets]
+        #     # elif ignore_reduntant_sets:
+        #     #     pass
+        #         #TODO: implement
+        #     ranked_sets= self.best_set_cache[max_set_size]
+        # else:
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
-        coverages = [self.score_coverage(set, scoring_function) for set in possible_combos]
+        sets = np.array([(possible_combos[i], self.score_coverage(possible_combos[i], scoring_function)) for i in range(len(possible_combos))], dtype=[('set', 'O'), ('coverage', 'f4')])
         if not check_subsets:
             ignore_reduntant_sets = True
-        elif max_set_size > 1:
-            best_condition_sets_smaller, best_coverages_smaller = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, num_sets, ignore_reduntant_sets=ignore_reduntant_sets)
-            possible_combos = possible_combos + best_condition_sets_smaller[::-1]
-            coverages = coverages + best_coverages_smaller[::-1]
+        elif check_subsets and max_set_size > 1:
+            smaller_sets = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, ignore_reduntant_sets=ignore_reduntant_sets)
+            sets = np.concatenate((sets, smaller_sets[::-1]), axis=0)
+        # sort 
+        sets = sets.sort(kind = 'stable', order='coverage')
         
-        set_idxs = np.array(coverages).argsort(kind = 'stable')
+        # end state: ranked_sets and ranked_covs are filled with corresponding values of all sets, sorted by coverage in descending order
         if num_sets == None:
-                num_sets = len(set_idxs)
+                num_sets = len(sets)
         if not ignore_reduntant_sets:
-            best_set_idxs = set_idxs[-num_sets:][::-1]
-            return [possible_combos[i] for i in best_set_idxs], [coverages[i] for i in best_set_idxs]
+            return sets[-num_sets:][::-1]
         
-        i = 0
-        set_idx = len(set_idxs)-1
-        sets_to_remove = []
-        best_set_idxs = np.zeros(num_sets, dtype=int)
-        while i < num_sets and set_idx >= 0:
+        # ignore redundant sets when a subset has already been seen
+        subsets_seen = []
+        idxs_to_remove = []
+        for set_idx in range(len(sets)-1, -1, -1):
             # if set does not contain a set already seen, add it
-            unique_set = np.all([not (s <= set(possible_combos[set_idxs[set_idx]])) for s in sets_to_remove])
+            unique_set = np.all([not (s <= set(sets[set_idx]['set'])) for s in subsets_seen])
             if unique_set:
-                # if set is smaller than max_set_size, add it to sets to remove
-                if len(possible_combos[set_idxs[set_idx]]) < max_set_size:
-                    sets_to_remove.append(set(possible_combos[set_idxs[set_idx]]))
-                best_set_idxs[i] = set_idxs[set_idx]
-                i += 1
-            set_idx -= 1
-            if set_idx > 0 and coverages[set_idxs[set_idx]] != coverages[set_idxs[set_idx + 1]]:
-                sets_to_remove = []
-        best_set_idxs = best_set_idxs[:i]
-        best_sets = [possible_combos[i] for i in best_set_idxs]
-        best_coverages = [coverages[i] for i in best_set_idxs]
-        return best_sets, best_coverages
+                # if set is smaller than max_set_size, add it to subsets_seen
+                if len(sets[set_idx]['set']) < max_set_size:
+                    subsets_seen.append(set(sets[set_idx]['set']))
+            else:
+                idxs_to_remove.append(set_idx)
+            if set_idx < len(sets) - 1 and sets[set_idx]['coverage'] != sets[set_idx + 1]['coverage']:
+                # reset because coverage of any set will be greater than or equal to the coverage of its subsets
+                sets = np.delete(sets, idxs_to_remove)
+                subsets_seen = []
+                idxs_to_remove = []
+        
+        return sets[-min(num_sets, len(sets)):][::-1]
+    
+    def condition_overlap(self, condition_set:tuple, yield_threshold:float) -> float:
+        yield_coverage_surface = np.zeros(self.shape[len(condition_set[0]):])
+        for cond in condition_set:
+            s = self.get_condition_surface(cond) > yield_threshold
+            yield_coverage_surface = yield_coverage_surface + s
+        return np.sum(yield_coverage_surface > 1)
+
     
     def rank_conditions(self, condition_options:list, max_set_size:int, cutoff:float) -> dict:
         '''
@@ -145,18 +167,37 @@ class SpaceMatrix:
             conditions += list(itertools.combinations(condition_options, set_size))
         conditions = conditions[::-1]
         rank_function = lambda x: np.sum(x >= cutoff) 
-        coverages = [self.score_coverage(set, rank_function) for set in conditions]
-        best_cond_idxs = np.array(coverages).argsort(kind = 'stable')
-        coverages = [coverages[i] for i in best_cond_idxs[::-1]]
-        conditions = [conditions[i] for i in best_cond_idxs[::-1]]
-        ranks = np.zeros(len(coverages), dtype=int)
+        # coverages = [self.score_coverage(set, rank_function) for set in conditions]
+        conds = np.array([(self.score_coverage(set, rank_function), -1*len(set), self.condition_overlap(set, cutoff), set) for set in conditions],
+             dtype=[('coverage', 'f4'),('size', 'i4'), ('overlap', 'f4'), ('condition', 'O')])
+        conds.sort(kind = 'stable', order=['coverage', 'size', 'overlap'])
+        conds = conds[::-1]
+        ranks = np.zeros(len(conds), dtype=int)
         # break ties by uniqueness of conditions -> number covered by only one condition
         rank = 1
         ranks[0] = rank
-        for i in range(len(coverages) - 1):
-            if coverages[i] != coverages[i+1] or len(conditions[i]) < len(conditions[i+1]):
+        for i in range(len(conds) - 1):
+            #  or conds[i+1]['overlap'] < conds[i]['overlap']
+            if conds[i]['coverage'] != conds[i+1]['coverage'] or len(conds[i]['condition']) < len(conds[i+1]['condition']):
                 rank = i + 2
             ranks[i+1] = rank
 
-        cond_to_rank_map = {conditions[i]: ranks[i] for i in range(len(ranks))}
+        cond_to_rank_map = {conds[i]['condition']: (1 - ranks[i]/len(conditions))*100 for i in range(len(ranks))} # (1 - ranks[i]/len(conditions))*100
         return cond_to_rank_map
+        # best_cond_idxs = np.array(coverages).argsort(kind = 'stable')
+        # coverages = [coverages[i] for i in best_cond_idxs[::-1]]
+        # conditions = [conditions[i] for i in best_cond_idxs[::-1]]
+        # ranks = np.zeros(len(coverages), dtype=int)
+        # # break ties by uniqueness of conditions -> number covered by only one condition
+        # rank = 1
+        # ranks[0] = rank
+        # last_overlap = self.condition_overlap(conditions[0])
+        # for i in range(len(coverages) - 1):
+        #     overlap = self.condition_overlap(conditions[i + 1])
+        #     if coverages[i] != coverages[i+1] or len(conditions[i]) < len(conditions[i+1]) or overlap < last_overlap:
+        #         rank = i + 2
+        #         last_overlap = overlap
+        #     ranks[i+1] = rank
+
+        # cond_to_rank_map = {conditions[i]: ranks[i] for i in range(len(ranks))}
+        # return cond_to_rank_map

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 from space_mat import SpaceMatrix
+import time
 
 class Learner(ABC):
     def __init__(self, shape):
@@ -48,12 +49,15 @@ class Classifier(Learner):
         self.model = GaussianProcessClassifier(kernel=kernel, copy_X_train=False, n_jobs=self.cpus)
 
     def predict(self, X:np.ndarray)->tuple:
+        assert len(X) > 0, 'No points to predict'
         uncertainty = []
         # fix memory error for large datasets
+        start = time.time()
         while len(X) > 25000:
             uncertainty.extend(self.model.predict_proba(X[:25000]))
             X = X[25000:]
         uncertainty.extend(self.model.predict_proba(X))
+        print(f"Time to predict: {time.time() - start}")
         # Predicted surface is a matrix of the predicted probability of the positive class (above .5 is predicted to be true)
         # self.predicted_surface = SpaceMatrix(np.array([uncertainty[i][1] > .5 for i in range(len(uncertainty))]).reshape(self.shape, order='C'))
         self.predicted_surface = SpaceMatrix(np.array([uncertainty[i][1] for i in range(len(uncertainty))]).reshape(self.shape, order='C'))

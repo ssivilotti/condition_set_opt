@@ -27,18 +27,18 @@ class ALClassifier(Classifier):
         exploit = [0] * len(uncertainty)
 
         # compute all coverages for all sets
-        ranked_sets, ranked_covs = self.predicted_surface.best_condition_sets(self.all_conditions, THRESHOLDED_COUNT(np.prod(self.shape[len(self.all_conditions[0]):]))(.5), self.max_set_size, ignore_reduntant_sets=False)
+        ranked_sets = self.predicted_surface.best_condition_sets(self.all_conditions, THRESHOLDED_COUNT(np.prod(self.shape[len(self.all_conditions[0]):]))(.5), self.max_set_size, ignore_reduntant_sets=False)
 
         # compute exploit val for all points
         all_reactants = list(itertools.product(*[range(s) for s in self.shape[len(self.all_conditions[0]):]]))
-        for i, s in enumerate(ranked_sets):
+        for i, s in enumerate(ranked_sets['set']):
             if len(s) == 1:
                 for reactant in all_reactants:
-                    exploit[convert_point_to_idx(self.shape, s[0] + reactant)] += ranked_covs[i] # maybe add a weight here
+                    exploit[convert_point_to_idx(self.shape, s[0] + reactant)] += ranked_sets[i]['coverage'] # maybe add a weight here
             else:
                 for cond in s:
                     for reactant in all_reactants:
-                        exploit[convert_point_to_idx(self.shape, cond + reactant)] += ranked_covs[i] * ((np.sum([1- self.predicted_surface[(c + reactant)] for c in s if c != cond]))/(len(s) - 1))
+                        exploit[convert_point_to_idx(self.shape, cond + reactant)] += ranked_sets[i]['coverage'] * ((np.sum([1- self.predicted_surface[(c + reactant)] for c in s if c != cond]))/(len(s) - 1))
 
         exploit = exploit/(np.sum([len(self.all_conditions)**n for n in range(0, self.max_set_size)]))
 

@@ -10,10 +10,7 @@ class ALClassifierBasic(Classifier):
 
     def suggest_next_n_points(self, X:np.ndarray, n:int, measured_indices:set)->list:
         '''next_points is a list of indices of the next points to be measured'''
-        last_time = time.time()
         uncertainty = self.predict(X)
-        print(f"Time to predict: {time.time() - last_time}")
-        last_time = time.time()
 
         assert len(uncertainty) != 0, 'Failed to predict uncertainty'
 

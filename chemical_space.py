@@ -75,7 +75,7 @@ class ChemicalSpace:
         y_true = self._y_true >= cutoff
         return accuracy_score(y_true, y_pred), precision_score(y_true, y_pred), recall_score(y_true, y_pred)
 
-    def best_condition_sets(self, yield_threshold:float, max_set_size:int=1, num_sets:int=10) -> tuple:
+    def best_condition_sets(self, yield_threshold:float, max_set_size:int=1, num_sets:int=10) -> np.ndarray:
         '''
         @params:
         yield_threshold: float, the maximum yield to count as a failed reaction
@@ -83,7 +83,7 @@ class ChemicalSpace:
         num_sets: int, the number of sets to return
         
         returns:
-        list of tuples and list of floats, the best condition sets and their corresponding scores
+        np.ndarray(type=('condition set', 'coverage')), the best condition sets and their corresponding scores
         '''
         return self.yield_surface.best_condition_sets(self.all_conditions, THRESHOLDED_COUNT(np.prod(self.shape[self.conditions_dim:]))(yield_threshold), max_set_size, num_sets)
     
@@ -118,11 +118,12 @@ class ChemicalSpace:
         plt.colorbar(label='% Yield')
         plt.xlabel(xlabel, fontsize=18)
         plt.ylabel(ylabel, fontsize=18)
-        condition_str = '; '.join([self.format_condition(c) for c in conditions])
+        # condition_str = '; '.join([self.format_condition(c) for c in conditions])
         if len(conditions) == 1:
-            condition_str = f"Condition {conditions[0]} Yield"
+            condition_str = f"Condition {conditions[0]} Coverage"
         else:
-            condition_str = f"Conditions {condition_str} Max Yield"
+            condition_str = ', '.join([f"{c}" for c in conditions])
+            condition_str = f"Conditions {condition_str} Coverage"
         plt.title(f'{condition_str}', fontsize=20)
         plt.savefig(file_name)
 
@@ -155,7 +156,7 @@ class ChemicalSpace:
             coverages.append([self.yield_surface.count_coverage(condition, cutoff) for condition in conditions])
         plt.hist(coverages, bins=20, histtype='bar', label=[f"Sets of size {size}" for size in set_sizes], stacked=False, log = True)
         plt.xlabel('Coverage', fontsize=15)
-        plt.ylabel('Number of Sets', fontsize=15)
+        plt.ylabel('Count', fontsize=15)
         plt.legend()
         plt.title('Reaction Space Coverage Distribution over Condition Sets', fontsize=15)
 
@@ -164,11 +165,11 @@ class ChemicalSpace:
         ax2:plt.Axes
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
         combination_mat = np.zeros((len(self.all_conditions), len(self.all_conditions)))
-        ordered_conds, _ = self.best_condition_sets(cutoff, 1, None)
+        ordered_conds = self.best_condition_sets(cutoff, 1, None)
         print(ordered_conds)
         for c in range(len(ordered_conds)):
             for c2 in range(c, len(ordered_conds)):
-                combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c][0], ordered_conds[c2][0]), cutoff)
+                combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c]['set'][0], ordered_conds[c2]['set'][0]), cutoff)
                 combination_mat[c2][c] = combination_mat[c][c2]
         ax1.imshow(combination_mat, origin='lower')
         ax1.set_xlabel('Ranked Individual Conditions')
@@ -189,17 +190,19 @@ class ChemicalSpace:
 
     # TODO: fix for buchwald hartwig
     def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_conditions=None)->None:
-        ordered_conds, coverage = self.best_condition_sets(cutoff, 1, None)
-        conds_condensed = [cond[0] for cond in ordered_conds]
+        individual = self.best_condition_sets(cutoff, 1, None)
+        # ordered_conds, coverage 
+        conds_condensed = [cond[0] for cond in individual['set']]
         # cond_idx = np.argsort(conds_condensed)
-        ordered_sets, set_coverage = self.best_condition_sets(cutoff, set_size, len(self.all_conditions))
+        sets = self.best_condition_sets(cutoff, set_size, len(self.all_conditions))
+        # ordered_sets, set_coverage
         combination_mat = np.full((len(self.all_conditions) + 1, len(self.all_conditions)), np.nan)
-        for i, set in enumerate(ordered_sets):
+        for i, set in enumerate(sets['coverage']):
             for cond in set:
                 idx = conds_condensed.index(cond)
-                combination_mat[idx][i] = coverage[idx]
+                combination_mat[idx][i] = individual[idx]['coverage']
                 # combination_mat[cond_idx[cond[0]]][i] = 
-        combination_mat[-1] = set_coverage
+        combination_mat[-1] = sets['coverage']
         cmap = mpl.colormaps.get_cmap('viridis')  # viridis is the default colormap for imshow
         cmap.set_bad('white', alpha=1)
         if max_num_conditions:
@@ -275,15 +278,4 @@ class ChemicalSpace:
         ax2.set_ylabel('Successful Reactions')
         ax2.set_title('Successful Reactions vs Yield')
         
-
-    def plot_set_coverage_size_2(self, cutoff:float)->None:
-        coverages = []
-        for size in range(1, 5):
-            conditions = itertools.combinations(self.all_conditions, size)
-            coverages.append([self.yield_surface.count_coverage(condition, cutoff) for condition in conditions])
-        plt.hist(coverages, bins=20, histtype='bar', label=[f"Sets of size {size}" for size in range(1, 5)], stacked=False, log = True)
-        plt.xlabel('Coverage')
-        plt.ylabel('Number of Sets')
-        plt.legend()
-        plt.title('Reaction Space Coverage Distribution over Condition Sets')
 

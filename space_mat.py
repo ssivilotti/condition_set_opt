@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+from joblib import Parallel, delayed
 
 # scoring functions for condition set coverage of a chemical space
 # more complex scoring functions can be added
@@ -83,9 +84,23 @@ class SpaceMatrix:
         yield_coverage_surface = self.get_condition_coverage(condition_set)
         return scoring_function(yield_coverage_surface)
     
+    def get_all_set_coverages(self, condition_options:list, scoring_function, max_set_size:int=1, check_subsets=True, num_cpus = 1):
+        possible_combos = list(itertools.combinations(condition_options, max_set_size))
+        coverages = Parallel(n_jobs=num_cpus)(delayed(self.score_coverage)(s, scoring_function) for s in possible_combos)
+        sets = np.array([(s, coverages[i], -1*len(s)) for i, s in enumerate(possible_combos)], dtype=[('set', 'O'), ('coverage', 'f4'),('size', 'i4'),])
+        if check_subsets and max_set_size > 1:
+            smaller_sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size-1, num_cpus=num_cpus)
+            smaller_sets['size'] = -1*smaller_sets['size']
+            sets = np.concatenate((sets, smaller_sets[::-1]))
+        return sets
+
+    def get_best_set(self, condition_options:list, scoring_function, max_set_size:int=1, check_subsets=True, num_cpus = 1):
+        sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size, check_subsets=check_subsets, num_cpus=num_cpus)
+        return np.partition(sets, kth=-1, order=['coverage', 'size'])[-1]
+    
     # TODO: remove scoring function (if caching is implemented)
 
-    def best_condition_sets(self, condition_options:list, scoring_function, max_set_size:int=1, num_sets:int=None, check_subsets=True, ignore_reduntant_sets=True) -> tuple:
+    def best_condition_sets(self, condition_options:list, scoring_function, max_set_size:int=1, num_sets:int=None, check_subsets=True, ignore_reduntant_sets=True, num_cpus = 1) -> tuple:
         '''
         @params:
         condition_options: list of tuples of integers, representing all possible or a subset of conditions in the chemical space
@@ -109,20 +124,13 @@ class SpaceMatrix:
         #         #TODO: implement
         #     ranked_sets= self.best_set_cache[max_set_size]
         # else:
-        possible_combos = list(itertools.combinations(condition_options, max_set_size))
-        sets = np.array([(s, self.score_coverage(s, scoring_function), -1*len(s)) for s in possible_combos], dtype=[('set', 'O'), ('coverage', 'f4'),('size', 'i4'),])
-        if not check_subsets:
-            ignore_reduntant_sets = True
-        elif check_subsets and max_set_size > 1:
-            smaller_sets = self.best_condition_sets(condition_options, scoring_function, max_set_size-1, ignore_reduntant_sets=ignore_reduntant_sets)
-            smaller_sets['size'] = -1*smaller_sets['size']
-            sets = np.concatenate((sets, smaller_sets[::-1]))
+        sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size, num_sets, check_subsets, num_cpus)
         # sort 
         sets.sort(order=['coverage', 'size'])
         sets['size'] = -1*sets['size']
         
         # end state: ranked_sets and ranked_covs are filled with corresponding values of all sets, sorted by coverage in descending order
-        if num_sets == None:
+        if not num_sets:
             num_sets = len(sets)
         if not ignore_reduntant_sets:
             return sets[-num_sets:][::-1]

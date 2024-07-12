@@ -1,8 +1,8 @@
 from chemical_space import ChemicalSpace
-from controller import Controller, RAND, ALC
+from controller import Controller
 import hydra
 from hydra.utils import get_original_cwd
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from pathlib import Path
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")

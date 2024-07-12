@@ -7,13 +7,12 @@ from scipy.stats import qmc
 from chemical_space import ChemicalSpace
 from space_mat import SpaceMatrix
 from space_mat import THRESHOLDED_COUNT
-from learners.learner import Learner
 from learners.al_classifier import ALClassifierBasic
 from learners.random_selection import ALClassifierRandomSelection
-from learners.al_classifier_david import ALClassifierD
 from tools.functions import convert_to_onehot, convert_point_to_idx
 from learners.al_classifier_modified import ALClassifier
 import time
+from joblib import Parallel, delayed
 
 # Learners
 # Active Learning Classifier
@@ -21,6 +20,7 @@ EXPLORE = 0
 # Active Learning Classifier with Tuned Aquistion Function
 EXPEXP = 1
 EXPLOIT = 2
+FLIPPED = 3
 # Random Selection of Next Points
 RAND = -1
 
@@ -28,7 +28,7 @@ RAND = -1
 class Controller:
     def __init__(self, chemical_space:ChemicalSpace, yield_cutoff:float=None, batch_size:int=10, max_experiments:int=1000, max_set_size:int=3, learner_type:int=EXPEXP, early_stopping=True, output_dir='.', num_cpus=None) :
         self.chemical_space = chemical_space
-        if yield_cutoff == None:
+        if not yield_cutoff:
             return
         self.output_dir = output_dir
         self.cutoff = yield_cutoff
@@ -39,22 +39,25 @@ class Controller:
         self.max_set_size = max_set_size
         self.early_stopping = early_stopping
         self.config = {'max_experiments': self.max_experiments, 'batch_size': self.batch_size, 'cutoff': self.cutoff, 'learner_type': learner_type, 'date': self.date_str, 'max_set_size': self.max_set_size, 'early_stopping': early_stopping}
+        self.num_cpus = num_cpus
         self.scoring_function =  THRESHOLDED_COUNT(np.prod(chemical_space.shape[chemical_space.conditions_dim:]))(.5)
         self.metrics = {}
         if chemical_space.descriptors == None:
-            self.all_points_featurized = [convert_to_onehot(self.chemical_space.shape, point) for point in chemical_space.all_points]
+            self.all_points_featurized = self.all_points_featurized = Parallel(n_jobs=num_cpus)(delayed(convert_to_onehot)(self.chemical_space.shape, point) for point in self.chemical_space.all_points)
         self.cond_to_rank_map = chemical_space.yield_surface.rank_conditions(chemical_space.all_conditions, max_set_size, yield_cutoff)
         self.init_learner(learner_type)
     
     def init_learner(self, learner_type, num_cpus=None)->None:
         if learner_type == EXPLORE:
-            self.learner = ALClassifierBasic(self.chemical_space.shape, num_cpus)
+            self.learner = ALClassifierBasic(self.chemical_space.shape, cpus=num_cpus)
         elif learner_type == RAND:
             self.learner = ALClassifierRandomSelection(self.chemical_space.shape, num_cpus)
         elif learner_type == EXPEXP:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus)
         elif learner_type == EXPLOIT:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus)
+        elif learner_type == FLIPPED:
+            self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.linspace(1, 0, x)), cpus=num_cpus)
         else:
             raise ValueError("Invalid learner type input")
 
@@ -80,6 +83,7 @@ class Controller:
         self.optimization_runs = len(self.metrics)
         self.early_stopping = self.config['early_stopping']
         self.scoring_function =  THRESHOLDED_COUNT(np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:]))(.5)
+        self.num_cpus = 1
         if self.chemical_space.descriptors == None:
             self.all_points_featurized = [convert_to_onehot(self.chemical_space.shape, point) for point in self.chemical_space.all_points]
         self.cond_to_rank_map = self.chemical_space.yield_surface.rank_conditions(self.chemical_space.all_conditions, self.max_set_size, self.cutoff)
@@ -108,7 +112,7 @@ class Controller:
         seed_vals = []
         seed_vals_sum = 0
         # ensures that seed has at least one successful reaction and at least one unsuccessful reaction
-        while seed_attempts < 10 and (seed_vals_sum < 1 or seed_vals_sum >= len(seed)):
+        while seed_attempts < 25 and (seed_vals_sum < 1 or seed_vals_sum >= len(seed)):
             if sampling_method == 'LHS':
                 sampler = qmc.LatinHypercube(d=len(self.chemical_space.shape))
                 seed = sampler.integers(l_bounds=np.zeros(len(self.chemical_space.shape), dtype=int), u_bounds=list(self.chemical_space.shape), n=self.batch_size)
@@ -117,6 +121,17 @@ class Controller:
             seed_vals = np.array([self.chemical_space.measure_reaction_yield(seed[i]) for i in range(len(seed))])
             seed_vals_sum = np.sum(seed_vals)
             seed_attempts += 1
+        if seed_attempts >= 25:
+            seed_attempts = 0
+            while seed_attempts < 25 and (seed_vals_sum < 1 or seed_vals_sum >= len(seed)):
+                if sampling_method == 'LHS':
+                    sampler = qmc.LatinHypercube(d=len(self.chemical_space.shape))
+                    seed = sampler.integers(l_bounds=np.zeros(len(self.chemical_space.shape), dtype=int), u_bounds=list(self.chemical_space.shape), n=2*self.batch_size)
+                else:
+                    return []
+                seed_vals = np.array([self.chemical_space.measure_reaction_yield(seed[i]) for i in range(len(seed))])
+                seed_vals_sum = np.sum(seed_vals)
+                seed_attempts += 1
         return seed
     
     def optimize(self, save_to_file=False)->tuple:
@@ -130,7 +145,7 @@ class Controller:
 
         metrics = {'accuracy': [], 'precision': [], 'recall': [], 
                    'best_sets': [], 'coverages': [], 
-                   'points_suggested': [seed], 'uncertainties':[[1.0 for i in range(len(seed))]]}
+                   'points_suggested': [seed], 'uncertainties':[[1.0]*len(seed)]}
 
         x = None
         y = None
@@ -158,7 +173,7 @@ class Controller:
                 x = [convert_to_onehot(self.chemical_space.shape, point) for point in next_points]
                 y = measurement
             else:
-                x = np.append(x, [convert_to_onehot(self.chemical_space.shape, point) for point in next_points], axis=0)
+                x = np.append(x, [self.all_points_featurized[i] for i in next_point_idxs], axis=0)
                 y =  np.append(y, measurement, axis=0)
 
             num_experiments_run += len(measurement)
@@ -167,16 +182,16 @@ class Controller:
             print(f"fit: {time.time() - last_measured_time} seconds")
             last_measured_time = time.time()
 
-            all_points_uncertainty, predicted_surface, next_points, certainties = self.learner.suggest_next_n_points(np.array(self.all_points_featurized), self.batch_size, known_idxs)
+            all_points_uncertainty, predicted_surface, next_point_idxs, certainties = self.learner.suggest_next_n_points(np.array(self.all_points_featurized), self.batch_size, known_idxs)
             known_idxs.update(next_points)
-            next_points = [self.chemical_space.all_points[i] for i in next_points]
+            next_points = [self.chemical_space.all_points[i] for i in next_point_idxs]
             print(f"suggest next points: {time.time() - last_measured_time} seconds")
             last_measured_time = time.time()
 
             accuracy, precicion, recall = self.chemical_space.score_classifier_prediction(all_points_uncertainty, self.cutoff)
             print(f"score model: {time.time() - last_measured_time} seconds")
             last_measured_time = time.time()
-            sets = predicted_surface.best_condition_sets(self.chemical_space.all_conditions, self.scoring_function, self.max_set_size, 10)
+            sets = predicted_surface.get_best_set(self.chemical_space.all_conditions, self.scoring_function, self.max_set_size, num_cpus=self.num_cpus)
             print(f"best sets: {time.time() - last_measured_time} seconds")
             last_measured_time = time.time()
             predicted_set = sets[0]['set']

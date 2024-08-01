@@ -6,11 +6,13 @@ import datetime as dt
 from scipy.stats import qmc
 from chemical_space import ChemicalSpace
 from space_mat import SpaceMatrix
-from space_mat import THRESHOLDED_COUNT
+from space_mat import THRESHOLDED_COUNT, WEIGHTED_COUNT
 from learners.al_classifier import ALClassifierBasic
 from learners.random_selection import ALClassifierRandomSelection
+from learners.al_classifier_exploit import ALClassifierFast
 from tools.functions import convert_to_onehot, convert_point_to_idx
 from learners.al_classifier_modified import ALClassifier
+from learners.al_classifier_exploit_2 import ALClassifierFast2
 import time
 from joblib import Parallel, delayed
 
@@ -21,6 +23,10 @@ EXPLORE = 0
 EXPEXP = 1
 EXPLOIT = 2
 FLIPPED = 3
+EXPEXP_FAST = 4
+EXPT_FAST = 5
+EXPEXP_FAST2 = 6
+EXPT_FAST2 = 7
 # Random Selection of Next Points
 RAND = -1
 
@@ -40,7 +46,8 @@ class Controller:
         self.early_stopping = early_stopping
         self.config = {'max_experiments': self.max_experiments, 'batch_size': self.batch_size, 'cutoff': self.cutoff, 'learner_type': learner_type, 'date': self.date_str, 'max_set_size': self.max_set_size, 'early_stopping': early_stopping}
         self.num_cpus = num_cpus
-        self.scoring_function =  THRESHOLDED_COUNT(np.prod(chemical_space.shape[chemical_space.conditions_dim:]))(.5)
+        # self.scoring_function = WEIGHTED_COUNT(.5)
+        # self.scoring_function =  THRESHOLDED_COUNT(np.prod(chemical_space.shape[chemical_space.conditions_dim:]))(.5)
         self.metrics = {}
         if chemical_space.descriptors == None:
             self.all_points_featurized = self.all_points_featurized = Parallel(n_jobs=num_cpus)(delayed(convert_to_onehot)(self.chemical_space.shape, point) for point in self.chemical_space.all_points)
@@ -48,6 +55,8 @@ class Controller:
         self.init_learner(learner_type)
     
     def init_learner(self, learner_type, num_cpus=None)->None:
+        # self.scoring_function = WEIGHTED_COUNT(.5)
+        self.scoring_function =  THRESHOLDED_COUNT(np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:]))(.5)
         if learner_type == EXPLORE:
             self.learner = ALClassifierBasic(self.chemical_space.shape, cpus=num_cpus)
         elif learner_type == RAND:
@@ -58,6 +67,14 @@ class Controller:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus)
         elif learner_type == FLIPPED:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.linspace(1, 0, x)), cpus=num_cpus)
+        elif learner_type == EXPEXP_FAST:
+            self.learner = ALClassifierFast(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus)
+        elif learner_type == EXPT_FAST:
+            self.learner = ALClassifierFast(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus)
+        elif learner_type == EXPEXP_FAST2:
+            self.learner = ALClassifierFast2(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus)
+        elif learner_type == EXPT_FAST2:
+            self.learner = ALClassifierFast2(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus)
         else:
             raise ValueError("Invalid learner type input")
 
@@ -82,7 +99,7 @@ class Controller:
         self.max_set_size = int(self.config['max_set_size'])
         self.optimization_runs = len(self.metrics)
         self.early_stopping = self.config['early_stopping']
-        self.scoring_function =  THRESHOLDED_COUNT(np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:]))(.5)
+        # self.scoring_function =  THRESHOLDED_COUNT(np.prod(self.chemical_space.shape[self.chemical_space.conditions_dim:]))(.5)
         self.num_cpus = 1
         if self.chemical_space.descriptors == None:
             self.all_points_featurized = [convert_to_onehot(self.chemical_space.shape, point) for point in self.chemical_space.all_points]
@@ -183,7 +200,7 @@ class Controller:
             last_measured_time = time.time()
 
             all_points_uncertainty, predicted_surface, next_point_idxs, certainties = self.learner.suggest_next_n_points(np.array(self.all_points_featurized), self.batch_size, known_idxs)
-            known_idxs.update(next_points)
+            known_idxs.update(next_point_idxs)
             next_points = [self.chemical_space.all_points[i] for i in next_point_idxs]
             print(f"suggest next points: {time.time() - last_measured_time} seconds")
             last_measured_time = time.time()
@@ -193,6 +210,7 @@ class Controller:
             last_measured_time = time.time()
             sets = predicted_surface.get_best_set(self.chemical_space.all_conditions, self.scoring_function, self.max_set_size, num_cpus=self.num_cpus)
             print(f"best sets: {time.time() - last_measured_time} seconds")
+            print(sets)
             last_measured_time = time.time()
             predicted_set = sets[0]['set']
             coverage = sets[0]['coverage']

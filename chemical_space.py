@@ -160,7 +160,7 @@ class ChemicalSpace:
         plt.legend()
         plt.title('Reaction Space Coverage Distribution over Condition Sets', fontsize=15)
 
-    def plot_combination_of_individual(self, cutoff:float)->None:
+    def plot_combination_of_individual(self, cutoff:float, vmin=None, vmax = None)->None:
         ax1:plt.Axes
         ax2:plt.Axes
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
@@ -170,7 +170,7 @@ class ChemicalSpace:
             for c2 in range(c, len(ordered_conds)):
                 combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c]['set'][0], ordered_conds[c2]['set'][0]), cutoff)
                 combination_mat[c2][c] = combination_mat[c][c2]
-        ax1.imshow(combination_mat, origin='lower')
+        ax1.imshow(combination_mat, origin='lower', vmin=vmin, vmax=vmax)
         ax1.set_xlabel('Ranked Individual Conditions')
         ax1.set_ylabel('Ranked Individual Conditions')
         # ax1.colorbar(label='Coverage')
@@ -186,7 +186,7 @@ class ChemicalSpace:
         ax2.plot(range(len(ordered_conds)), coverage_std, label=['Coverage Std'])
 
     # TODO: fix for buchwald hartwig
-    def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_conditions=None)->None:
+    def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_conditions=None, vmin=None, vmax = None)->None:
         individual = self.best_condition_sets(cutoff, 1, None)
         # ordered_conds, coverage 
         conds_condensed = [cond[0] for cond in individual['set']]
@@ -194,17 +194,24 @@ class ChemicalSpace:
         sets = self.best_condition_sets(cutoff, set_size, len(self.all_conditions))
         # ordered_sets, set_coverage
         combination_mat = np.full((len(self.all_conditions) + 1, len(self.all_conditions)), np.nan)
-        for i, set in enumerate(sets['coverage']):
+        for i, set in enumerate(sets['set']):
             for cond in set:
                 idx = conds_condensed.index(cond)
                 combination_mat[idx][i] = individual[idx]['coverage']
                 # combination_mat[cond_idx[cond[0]]][i] = 
-        combination_mat[-1] = sets['coverage']
+
+        sums = np.nansum(combination_mat, axis=1)
+        trim_count = np.trim_zeros(sums, 'b')
+        # combination_mat = combination_mat.T[:len(trim_count)].T
+        print(np.average(sets['size']))
+        combination_mat = combination_mat[:len(trim_count) + 1]
+        if max_num_conditions:
+            combination_mat = combination_mat[:max_num_conditions] #+[combination_mat[-1]]
+        combination_mat[-1] = sets['coverage'] #[:len(trim_count)]
         cmap = mpl.colormaps.get_cmap('viridis')  # viridis is the default colormap for imshow
         cmap.set_bad('white', alpha=1)
-        if max_num_conditions:
-            combination_mat = combination_mat[:max_num_conditions]+[combination_mat[-1]]
-        plt.imshow(combination_mat, origin='lower', cmap=cmap)
+        fig = plt.figure(figsize=(10, 5))
+        plt.imshow(combination_mat, aspect='auto', origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.ylabel('Ranked Individual Conditions')
         plt.xlabel(f'Ranked Distinct Condition Sets of at most Size {set_size}')
         plt.colorbar(label='Coverage')

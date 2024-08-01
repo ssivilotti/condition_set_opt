@@ -46,7 +46,7 @@ class Classifier(Learner):
 
     def initialize_model(self):
         kernel = 1.0 * RBF(1.0)
-        self.model = GaussianProcessClassifier(kernel=kernel, copy_X_train=False, n_jobs=self.cpus)
+        self.model = GaussianProcessClassifier(kernel=kernel, copy_X_train=False, n_jobs=self.cpus, max_iter_predict=1000)
 
     def predict(self, X:np.ndarray)->tuple:
         assert len(X) > 0, 'No points to predict'

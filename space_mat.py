@@ -7,6 +7,8 @@ from joblib import Parallel, delayed
 # the last argument is an np.ndarray of the maximum yield surface of the conditions
 THRESHOLDED_COUNT = lambda s: lambda a: lambda x: (np.sum(x >= a))/s
 BINARY_COUNT = lambda s: lambda x: np.sum(x)/s
+
+WEIGHTED_COUNT = lambda a: lambda x: np.sum(x >= a) + np.average(x[x >= a])
 class SpaceMatrix:
     def __init__(self, matrix:np.ndarray) -> None:
         '''
@@ -87,6 +89,7 @@ class SpaceMatrix:
     def get_all_set_coverages(self, condition_options:list, scoring_function, max_set_size:int=1, check_subsets=True, num_cpus = 1):
         possible_combos = list(itertools.combinations(condition_options, max_set_size))
         coverages = Parallel(n_jobs=num_cpus)(delayed(self.score_coverage)(s, scoring_function) for s in possible_combos)
+        # coverages = [self.score_coverage(s, scoring_function) for s in possible_combos]
         sets = np.array([(s, coverages[i], -1*len(s)) for i, s in enumerate(possible_combos)], dtype=[('set', 'O'), ('coverage', 'f4'),('size', 'i4'),])
         if check_subsets and max_set_size > 1:
             smaller_sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size-1, num_cpus=num_cpus)
@@ -96,7 +99,7 @@ class SpaceMatrix:
 
     def get_best_set(self, condition_options:list, scoring_function, max_set_size:int=1, check_subsets=True, num_cpus = 1):
         sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size, check_subsets=check_subsets, num_cpus=num_cpus)
-        return np.partition(sets, kth=-1, order=['coverage', 'size'])[-1]
+        return np.partition(sets, kth=-1, order=['coverage', 'size'])[-1:]
     
     # TODO: remove scoring function (if caching is implemented)
 
@@ -124,7 +127,7 @@ class SpaceMatrix:
         #         #TODO: implement
         #     ranked_sets= self.best_set_cache[max_set_size]
         # else:
-        sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size, num_sets, check_subsets, num_cpus)
+        sets = self.get_all_set_coverages(condition_options, scoring_function, max_set_size, check_subsets, num_cpus)
         # sort 
         sets.sort(order=['coverage', 'size'])
         sets['size'] = -1*sets['size']

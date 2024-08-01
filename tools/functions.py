@@ -66,8 +66,8 @@ def merge_metrics(metric_filepaths:list, output_dir:str=None)->None:
             conf_check = pickle.load(f)
             for key in conf.keys() - ['date']:
                 assert conf[key] == conf_check[key], f'{key} does not match in config files {cfg_fp} and {config_files[0]}'
-    if output_dir is None:
-        output_dir = metric_filepaths[0].split('/')[-3]+f'/batch_size={conf['batch_size']}_cutoff={conf["cutoff"]}_max_set_size={conf["max_set_size"]}_learner={conf["learner_type"]}'
+    if not output_dir:
+        output_dir = metric_filepaths[0].split('/')[-3]+f'/batch_size={conf["batch_size"]}_cutoff={conf["cutoff"]}_max_set_size={conf["max_set_size"]}_learner={conf["learner_type"]}'
     os.makedirs(output_dir, exist_ok=True)
     metrics = {}
     opt_count = 0
@@ -131,7 +131,7 @@ def compare_spaces(spaces:list[ChemicalSpace])->None:
 
 def plot_learner_metrics(chemical_space:ChemicalSpace, metric_filepaths:list, names:list, abbreviations:list=None, output_file_path:str=None)->None:
         assert len(metric_filepaths) == len(names), 'Number of filepaths and names must be the same'
-        if abbreviations is None:
+        if not abbreviations:
             abbreviations = names
         pred_covs = [f'{abbreviations[i]} Predicted Coverage' for i in range(len(names))]
         actual_covs = [f'{abbreviations[i]} Actual Coverage' for i in range(len(names))]

@@ -3,8 +3,8 @@ from learners.learner import Classifier, YieldPred
 
 class ALClassifierRandomSelection(Classifier):
     '''Randomly selects the next points to be measured, benchmarking against active learning classifiers'''
-    def __init__(self, space_shape:int, cpus=None):
-        super().__init__(space_shape, cpus)
+    def __init__(self, space_shape:int, cpus=None, model_type='GP'):
+        super().__init__(space_shape, model_type, cpus)
 
     def suggest_next_n_points(self, X:np.ndarray, n:int, measured_indices:set)->list:
         '''next_points is a list of indices of the next points to be measured'''

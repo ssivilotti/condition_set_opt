@@ -1,45 +1,18 @@
 import itertools
 import numpy as np
-from learners.learner import Classifier, YieldPred
+from learners.learner import Classifier
 from space_mat import THRESHOLDED_COUNT
 from tools.functions import convert_point_to_idx, convert_idx_to_point
-from joblib import Parallel, delayed
 import time
 from math import comb
 
 class ALClassifier(Classifier):
-    '''Active learning classifier that suggests the top n points with the highest uncertainty that haven't been measured yet to be measured next'''
-    def __init__(self, space_shape:tuple, all_conditions, max_set_size, alpha_init_fun=(lambda x: np.linspace(0, 1, x, endpoint=True)), cpus=None, stochastic_cond_num=None):
-        super().__init__(space_shape, cpus)
+    '''Active learning classifier that suggests the top n points with the highest uncertainty and high complementarity that haven't been measured yet'''
+    def __init__(self, space_shape:tuple, all_conditions, max_set_size, alpha_init_fun=(lambda x: np.linspace(0, 1, x, endpoint=True)), cpus=None, model_type='GP'):
+        super().__init__(space_shape, model_type, cpus)
         self.all_conditions = all_conditions
         self.max_set_size = max_set_size
         self.alpha_init_fun = alpha_init_fun
-        self.stochastic_cond_num = stochastic_cond_num if stochastic_cond_num is not None else len(all_conditions)
-
-    # def exploit_helper(self, idx, sets):
-    #     result = 0
-    #     point = convert_idx_to_point(self.shape, idx)
-    #     c = tuple(point[:len(sets['set'][0])])
-    #     r = tuple(point[len(sets['set'][0]):])
-    #     for s in sets:
-    #         if c in s['set']:
-    #             if len(s) == 1:
-    #                 result += s['coverage'] # maybe add a weight here
-    #             else:
-    #                 result += s['coverage'] * ((np.sum([1- self.predicted_surface[(cond + r)] for cond in s if c != cond]))/(len(s) - 1))
-    #     return result
-        # result = [0] * np.prod(self.shape)
-        # if len(s) == 1:
-        #     idx = 0
-        #     for i, n in enumerate(s['set'][0]):
-        #         idx += n
-        #         if i < len(self.shape) - 1:   
-        #             idx *= self.shape[i+1]
-        #     return s['coverage'] # maybe add a weight here
-        # else:
-        #         all_reactants = list(itertools.product(*[range(s) for s in self.shape[len(s['set'][0]):]]))
-        #         result += s['coverage'] * ((np.sum([1- self.predicted_surface[(cond + r)] for cond in s if c != cond]))/(len(s) - 1))
-        # return result
 
     def compute_exploit(self, uncertainty):
         exploit = [0] * len(uncertainty)
@@ -47,9 +20,10 @@ class ALClassifier(Classifier):
 
         # compute all coverages for all sets
         sets = self.predicted_surface.get_all_set_coverages(self.all_conditions, THRESHOLDED_COUNT(np.prod(self.shape[len(self.all_conditions[0]):]))(.5), self.max_set_size, num_cpus=self.cpus)
-
+        
         print(f"Time to get all set coverages: {time.time() - t0} seconds")
         t0 = time.time()
+        
         # compute exploit val for all points
         all_reactants = list(itertools.product(*[range(s) for s in self.shape[len(self.all_conditions[0]):]]))
         for i, s in enumerate(sets['set']):
@@ -59,21 +33,19 @@ class ALClassifier(Classifier):
                 else:
                     for cond in s:
                         exploit[convert_point_to_idx(self.shape, cond + reactant)] += sets[i]['coverage'] * ((np.sum([1- self.predicted_surface[(c + reactant)] for c in s if c != cond]))/(len(s) - 1))
-        # exploit = Parallel(n_jobs=self.cpus)(delayed(self.exploit_helper)(idx, sets) for idx in range(len(uncertainty)))
-
+        
         exploit = exploit/(1 + np.sum([comb(len(self.all_conditions) - 1, n) for n in range(1, self.max_set_size)]))
-
+        
         print(f"time to create exploit: {time.time() - t0}")
         t0 = time.time()
-
+        
         #multiply by probablity of success for each point
         exploit = exploit * uncertainty.T[1]
-
-        return exploit
         
+        return exploit
+
     def suggest_next_n_points(self, X:np.ndarray, n:int, measured_indices:set)->list:
         '''next_points is a list of indices of the next points to be measured'''
-        # TODO: pick different locations based on uncertainty, ensure batch doesn't cover only one area
         uncertainty = self.predict(X)
         
         explore_a = self.alpha_init_fun(n)

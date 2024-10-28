@@ -57,6 +57,7 @@ def convert_idx_to_point(shape:tuple, idx:int)-> list:
     return point
 
 def merge_metrics(metric_filepaths:list, output_dir:str=None)->None:
+    '''Combines metrics from multiple files with the same config into one file'''
     assert len(metric_filepaths) > 1, 'Need more than one metric file to merge'
     config_files = [fp.replace('metrics_', 'config_') for fp in metric_filepaths]
     print(config_files[0])
@@ -84,6 +85,47 @@ def merge_metrics(metric_filepaths:list, output_dir:str=None)->None:
         pickle.dump(metrics, f)
     with open(f'{output_dir}/config_.pkl', 'wb') as f:
         pickle.dump(conf, f)
+
+def read_files(files):
+    '''Outputs key information about config and metrics files'''
+    for file in files:
+        with open(file.replace('metrics_', 'config_'),'rb') as f:
+            conf = pickle.load(f)
+        with open(file,'rb') as f:
+            try:
+                metrics = pickle.load(f)
+                print(f"{conf.get('model_type', 'GP')}, {conf['learner_type']}, {conf['batch_size']}, {conf['max_set_size']}, {conf.get('stochastic_cond_num', None)}: ({len(metrics)}) {file}")
+            except:
+                print(f"{conf['model_type']}, {conf['learner_type']}, {conf['batch_size']}, {conf['max_set_size']}, {conf['stochastic_cond_num']}: Error loading metrics")
+                continue
+
+def create_batch_dict(files):
+    idx_map = {-1:0, 0:1, 6:2, 7:3}
+    batch_dict = {1:['rand','explore','explore-exploit','exploit'],
+                    10:['rand','explore','explore-exploit','exploit'],
+                    20:['rand','explore','explore-exploit','exploit'],
+                    40:['rand','explore','explore-exploit','exploit'],
+                    80:['rand','explore','explore-exploit','exploit'],
+                    160:['rand','explore','explore-exploit','exploit']}
+    for file in files:
+        with open(file.replace('metrics_', 'config_'),'rb') as f:
+            conf = pickle.load(f)
+        try:
+            assert conf['batch_size'] in batch_dict.keys()
+            assert conf['model_type'] == 'RF'
+            assert conf['stochastic_cond_num'] is None
+            assert conf['learner_type'] in idx_map.keys()
+        except:
+            continue
+        with open(file,'rb') as f:
+            try:
+                metrics = pickle.load(f)
+                print(f"{conf['model_type']}, {conf['learner_type']}, {conf['batch_size']}, {conf['max_set_size']}, {conf['stochastic_cond_num']}: ({len(metrics)}) {file}")
+            except:
+                print(f"{conf['model_type']}, {conf['learner_type']}, {conf['batch_size']}, {conf['max_set_size']}, {conf['stochastic_cond_num']}: Error loading metrics")
+                continue
+        batch_dict[conf['batch_size']][idx_map[conf['learner_type']]] = file
+    return batch_dict
 
 def compare_spaces(spaces:list[ChemicalSpace])->None:
     fig, (ax1, ax2, ax0, ax3) = plt.subplots(1, 1, figsize=(5, 5)) #ax1, ax2, ax0, ax3
@@ -187,8 +229,10 @@ def plot_learner_metrics(chemical_space:ChemicalSpace, metric_filepaths:list, na
         cov_labels[i*2] = pred_covs[i]
         cov_labels[i*2+1] = actual_covs[i]
     print(df.index.is_unique)
-    g = sns.lineplot(data=df, x='Fraction of Space Tested', y='Predicted Coverage', hue='pred_name', hue_order=pred_covs, ax=ax1)
-    sns.lineplot(data=df, x='Fraction of Space Tested', y='Actual Coverage', hue='actual_name', hue_order=actual_covs, ax=g, palette='dark')
+    g = sns.lineplot(data=df, x='Fraction of Space Tested', y='Actual Coverage', hue='actual_name', hue_order=actual_covs, ax=ax1)
+    g.hlines(y=[chemical_space.max_possible_coverage(yield_cutoff)], xmin=0, xmax=df['Fraction of Space Tested'].max(), colors='black', linestyles='solid')
+    g.hlines(y=[chemical_space.best_condition_sets(yield_cutoff, 1, 1)[0]['coverage']], xmin=0, xmax=df['Fraction of Space Tested'].max(), colors='black', linestyles='dashed')
+    
     g2 = sns.lineplot(data=df, x='Fraction of Space Tested', y='Rank', hue='name',palette=colors, ax=ax2)
     g2.set_ylim(0, 110)
     ax1.set_title('Coverage of Best Predicted Sets', fontsize=15)
@@ -201,7 +245,6 @@ def plot_learner_metrics(chemical_space:ChemicalSpace, metric_filepaths:list, na
     ax2.set_title('Best Predicted Sets', fontsize=15)
     ax2.set_xlabel('Fraction of Space Tested', fontsize=15)
     ax2.set_ylabel('Percentile', fontsize=15)
-    # ax2.set_yscale('log')
     handles, labels = ax2.get_legend_handles_labels()
     ax2.legend(handles=handles, labels=labels)
     ax2.legend().set_visible(show_legend)
@@ -252,7 +295,7 @@ def sort_by_learner_type(files):
             print(len(metrics))
     return sorted_files
 
-def plot_sampled_points(chemical_space:ChemicalSpace, metric_filepath:list, opt_num:int=-1)->None:
+def plot_sampled_points(chemical_space:ChemicalSpace, metric_filepath:list, opt_num:int=-1, figsize=(5,5))->None:
     def reactant_to_idx(reactant):
         idx = 0
         for i, n in enumerate(reactant):
@@ -273,6 +316,8 @@ def plot_sampled_points(chemical_space:ChemicalSpace, metric_filepath:list, opt_
     for i, points in enumerate(m[opt_num]['points_suggested']):
         for p in points:
             point_mat[reactant_to_idx(p[chemical_space.conditions_dim:])][condition_to_idx(p[:chemical_space.conditions_dim])] = i + 1
+    fig = plt.figure(figsize=figsize)
     plt.imshow(point_mat)
-    plt.colorbar().set_label('Batch Number')
+    # plt.colorbar().set_label('Batch Number')
+    plt.show()
     

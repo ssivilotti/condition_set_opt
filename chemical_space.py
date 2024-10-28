@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from space_mat import SpaceMatrix
 from space_mat import THRESHOLDED_COUNT
+from matplotlib.colors import ListedColormap
 
 class ChemicalSpace:
     def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield') -> None:
@@ -95,128 +96,7 @@ class ChemicalSpace:
         returns:
         string, the formatted condition using the condition labels'''
         return ', '.join([f'{self.labels[i][c]}' for i, c in enumerate(condition)])
-
-    def plot_conditions(self, file_name, conditions:tuple, yield_threshold=0) -> None:
-        '''
-        @params:
-        file_name: string, the file path location where the plot will be saved
-        conditions: tuple of condition tuples
-        yield_threshold: float, the minimum yield to count as a successful condition, all reactions below this threshold will be set to 0
-
-        requires that the chemical space has exactly 2 reactants
-
-        saves a plot of the max yield surface for the given conditions using the reactant titles as the x and y labels
-        '''
-        ylabel = self.titles[self.conditions_dim]
-        xlabel = self.titles[self.conditions_dim + 1]
-        yields = np.zeros(self.shape[self.conditions_dim:])
-        for condition in conditions:
-            yields = np.maximum(yields, self.yield_surface.get_condition_surface(condition))
-        below_threshold = yields < yield_threshold
-        yields[below_threshold] = 0
-        plt.imshow(yields, vmin=0, vmax=100)
-        plt.colorbar(label='% Yield')
-        plt.xlabel(xlabel, fontsize=18)
-        plt.ylabel(ylabel, fontsize=18)
-        # condition_str = '; '.join([self.format_condition(c) for c in conditions])
-        if len(conditions) == 1:
-            condition_str = f"Condition {conditions[0]} Coverage"
-        else:
-            condition_str = ', '.join([f"{c}" for c in conditions])
-            condition_str = f"Conditions {condition_str} Coverage"
-        plt.title(f'{condition_str}', fontsize=20)
-        plt.savefig(file_name)
-
-    def plot_surface(self, zlabel = '% Yield', title='Highest Yield Across All Conditions') -> None:    
-        '''
-        @params:
-        dataset_name: string, the prefix of the file where the plot will be saved
-        zlabel: string, the label of the z axis
-        title: string, the title of the plot
-
-        requires that the chemical space has exactly 2 reactants
-
-        saves a plot of the max yield surface over all conditions using the reactant titles as the x and y labels to dataset_name.png
-        '''
-        ylabel = self.titles[-2]
-        xlabel = self.titles[-1]
-        
-        max_yield_surface = np.amax(self.yield_surface.mat.T, axis=tuple(range(2, len(self.shape)))).T
-        plt.imshow(max_yield_surface)
-        plt.colorbar(label=zlabel)
-        plt.xlabel(xlabel, fontsize=15)
-        plt.ylabel(ylabel, fontsize=15)
-        plt.title(title, fontsize=20)
-        plt.savefig(f'{self.dataset_name}.png')
     
-    def plot_set_coverages(self, set_sizes:list, cutoff:float)->None:
-        coverages = []
-        for size in set_sizes:
-            conditions = itertools.combinations(self.all_conditions, size)
-            coverages.append([self.yield_surface.count_coverage(condition, cutoff) for condition in conditions])
-        plt.hist(coverages, bins=20, histtype='bar', label=[f"Sets of size {size}" for size in set_sizes], stacked=False, log = True)
-        plt.xlabel('Coverage', fontsize=15)
-        plt.ylabel('Count', fontsize=15)
-        plt.legend()
-        plt.title('Reaction Space Coverage Distribution over Condition Sets', fontsize=15)
-
-    def plot_combination_of_individual(self, cutoff:float, vmin=None, vmax = None)->None:
-        ax1:plt.Axes
-        ax2:plt.Axes
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        combination_mat = np.zeros((len(self.all_conditions), len(self.all_conditions)))
-        ordered_conds = self.best_condition_sets(cutoff, 1, None)
-        for c in range(len(ordered_conds)):
-            for c2 in range(c, len(ordered_conds)):
-                combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c]['set'][0], ordered_conds[c2]['set'][0]), cutoff)
-                combination_mat[c2][c] = combination_mat[c][c2]
-        ax1.imshow(combination_mat, origin='lower', vmin=vmin, vmax=vmax)
-        ax1.set_xlabel('Ranked Individual Conditions')
-        ax1.set_ylabel('Ranked Individual Conditions')
-        # ax1.colorbar(label='Coverage')
-        # # ticks = [f'{cond[0]}' for cond in ordered_conds]
-        # # plt.xticks(range(len(ordered_conds)), ticks, rotation=90)
-        # # plt.yticks(range(len(ordered_conds)), ticks)
-        ax1.set_title('Combinations of Individual Conditions')
-        max_coverage = combination_mat.max(axis = 0)
-        avg_coverage = combination_mat.mean(axis = 0)
-        coverage_std = combination_mat.std(axis = 0)
-        ax2.plot(range(len(ordered_conds)), max_coverage, label=['Max Coverage'])
-        ax2.plot(range(len(ordered_conds)), avg_coverage, label=['Average Coverage'])
-        ax2.plot(range(len(ordered_conds)), coverage_std, label=['Coverage Std'])
-
-    # TODO: fix for buchwald hartwig
-    def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_conditions=None, vmin=None, vmax = None)->None:
-        individual = self.best_condition_sets(cutoff, 1, None)
-        # ordered_conds, coverage 
-        conds_condensed = [cond[0] for cond in individual['set']]
-        # cond_idx = np.argsort(conds_condensed)
-        sets = self.best_condition_sets(cutoff, set_size, len(self.all_conditions))
-        # ordered_sets, set_coverage
-        combination_mat = np.full((len(self.all_conditions) + 1, len(self.all_conditions)), np.nan)
-        for i, set in enumerate(sets['set']):
-            for cond in set:
-                idx = conds_condensed.index(cond)
-                combination_mat[idx][i] = individual[idx]['coverage']
-                # combination_mat[cond_idx[cond[0]]][i] = 
-
-        sums = np.nansum(combination_mat, axis=1)
-        trim_count = np.trim_zeros(sums, 'b')
-        # combination_mat = combination_mat.T[:len(trim_count)].T
-        print(np.average(sets['size']))
-        combination_mat = combination_mat[:len(trim_count) + 1]
-        if max_num_conditions:
-            combination_mat = combination_mat[:max_num_conditions] #+[combination_mat[-1]]
-        combination_mat[-1] = sets['coverage'] #[:len(trim_count)]
-        cmap = mpl.colormaps.get_cmap('viridis')  # viridis is the default colormap for imshow
-        cmap.set_bad('white', alpha=1)
-        fig = plt.figure(figsize=(10, 5))
-        plt.imshow(combination_mat, aspect='auto', origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
-        plt.ylabel('Ranked Individual Conditions')
-        plt.xlabel(f'Ranked Distinct Condition Sets of at most Size {set_size}')
-        plt.colorbar(label='Coverage')
-        plt.title('Combinations of Condition Sets')
-
     def max_possible_coverage(self, cutoff:float)->int:
         return self.yield_surface.count_coverage(self.all_conditions, cutoff)
 
@@ -242,6 +122,199 @@ class ChemicalSpace:
             if cond_cov_max_yields[-i] == cond_cov_max_yields[1-i]:
                 coverage[-i] = coverage[1-i]
         return cond_cov_max_yields, coverage
+
+    def plot_conditions(self, file_name, conditions:tuple, yield_threshold=0) -> None:
+        '''
+        @params:
+        file_name: string, the file path location where the plot will be saved
+        conditions: tuple of condition tuples
+        yield_threshold: float, the minimum yield to count as a successful condition, all reactions below this threshold will be set to 0
+
+        requires that the chemical space has exactly 2 reactants
+
+        saves a plot of the max yield surface for the given conditions using the reactant titles as the x and y labels
+        '''
+        ylabel = self.titles[self.conditions_dim]
+        xlabel = self.titles[self.conditions_dim + 1]
+        yields = np.zeros(self.shape[self.conditions_dim:])
+        for condition in conditions:
+            yields = np.maximum(yields, self.yield_surface.get_condition_surface(condition))
+        below_threshold = yields < yield_threshold
+        yields[below_threshold] = 0
+        plt.imshow(yields, vmin=0, vmax=100)
+        plt.colorbar(label='% Yield')
+        plt.xlabel(xlabel, fontsize=18)
+        plt.ylabel(ylabel, fontsize=18)
+        if len(conditions) == 1:
+            condition_str = f"Condition {conditions[0]} Coverage"
+        else:
+            condition_str = ', '.join([f"{c}" for c in conditions])
+            condition_str = f"Conditions {condition_str} Coverage"
+        plt.title(f'{condition_str}', fontsize=20)
+        plt.savefig(file_name)
+
+    def plot_max_surface(self, zlabel = '% Yield', title='Highest Yield Across All Conditions') -> None:    
+        '''
+        @params:
+        dataset_name: string, the prefix of the file where the plot will be saved
+        zlabel: string, the label of the z axis
+        title: string, the title of the plot
+
+        requires that the chemical space has exactly 2 reactants
+
+        saves a plot of the max yield surface over all conditions using the reactant titles as the x and y labels to dataset_name.png
+        '''
+        ylabel = self.titles[-2]
+        xlabel = self.titles[-1]
+        
+        max_yield_surface = np.amax(self.yield_surface.mat.T, axis=tuple(range(2, len(self.shape)))).T
+        plt.imshow(max_yield_surface)
+        plt.colorbar(label=zlabel)
+        plt.xlabel(xlabel, fontsize=15)
+        plt.ylabel(ylabel, fontsize=15)
+        plt.title(title, fontsize=20)
+        plt.savefig(f'{self.dataset_name}.png')
+    
+    def plot_set_coverages(self, set_sizes:list, cutoff:float, show_legend = True, font_size=15, bins=None, xmin=None)->None:
+        '''Plot histogram of condition set coverages across different condition set sizes'''
+        coverages = []
+        plt.rcParams['font.family'] = "sans-serif"
+        plt.rcParams['font.sans-serif'] = "Arial"
+        for size in set_sizes:
+            conditions = itertools.combinations(self.all_conditions, size)
+            covs = [self.yield_surface.count_coverage(condition, cutoff)*100 for condition in conditions]
+            print(f"{size} max cov: {np.array(covs).max()}")
+            coverages.append(covs) 
+        # create custom matplot lib color map
+        cmap = ListedColormap(['#FF1F5B', '#009ADE', '#AF58BA', '#FFC61E', '#F28522', '#00CD6C'])
+        plt.set_cmap(cmap)
+        print(coverages)
+        if bins is None:
+            bins = np.prod(self.shape[self.conditions_dim:])
+        if xmin:
+            coverages = [[n for n in c if n >= xmin] for c in coverages]
+        plt.hist(coverages, bins=bins, histtype='bar', label=[f"{size}" for size in set_sizes], stacked=False, log = True, color=['#FF1F5B', '#009ADE', '#AF58BA', '#FFC61E', '#F28522', '#00CD6C'][:len(set_sizes)])
+        plt.xlabel('Coverage of Reactant Space (%)', fontsize=font_size)
+        plt.ylabel('Number of Sets', fontsize=font_size)
+        plt.tick_params(axis='both', which='major', labelsize=13)
+        if show_legend:
+            plt.legend(title='Number of Reaction \nConditions in a Set', loc='center left', bbox_to_anchor=(1, 0.5),  fontsize=11, title_fontsize=13)
+        plt.savefig(f"./datasets/{self.dataset_name}_histogram.png")
+        plt.show(block=True)
+
+    def plot_condition_pair_coverages(self, cutoff:float, vmin=None, vmax = None, font_size=15)->None:
+        ax1:plt.Axes
+        fig, (ax1) = plt.subplots(1, 1, figsize=(5, 5))
+        combination_mat = np.zeros((len(self.all_conditions), len(self.all_conditions)))
+        ordered_conds = self.best_condition_sets(cutoff, 1, None)
+        for c in range(len(ordered_conds)):
+            for c2 in range(c, len(ordered_conds)):
+                combination_mat[c][c2] = self.yield_surface.count_coverage((ordered_conds[c]['set'][0], ordered_conds[c2]['set'][0]), cutoff)
+                combination_mat[c2][c] = combination_mat[c][c2]
+        ax1.imshow(combination_mat, origin='lower')
+        ax1.set_xlabel('Ranked Individual Conditions')
+        ax1.set_ylabel('Ranked Individual Conditions')
+        ax1.set_title('Combinations of Individual Conditions')
+
+    def plot_subset_overlap(self, set_size:int, cutoff:float, max_num_sets=None, vmin=100, vmax = 0, font_size = 15, cond_cutoff=None, cov_min=0, cov_max=75)->None:
+        '''Plot of high coverage sets and the individual conditions that make them up'''
+        fig = plt.figure(figsize=(6.5, 8.805))
+        gs = fig.add_gridspec(1, 2, width_ratios=[3.6, 1])
+
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax2 = fig.add_subplot(gs[0, 1], sharey=ax1) #
+
+        if max_num_sets is None:
+             max_num_sets = len(self.all_conditions)
+
+        individual = self.best_condition_sets(cutoff, 1, None)
+        
+        conds_condensed = [cond[0] for cond in individual['set']]
+        sets = self.best_condition_sets(cutoff, set_size, max_num_sets)
+        # conditions over the cutoff number of individual conditions on the x axis
+        conds_over_ys = []
+        conds_over_txt = []
+        if cond_cutoff is None:
+            combination_mat = np.full((len(conds_condensed), max_num_sets), np.nan)
+        else:
+            combination_mat = np.full((cond_cutoff, max_num_sets), np.nan)
+        f = lambda s: tuple(np.sort(np.array([-1*conds_condensed.index(c) for c in s]))[::-1])
+        converted_sets = np.array([(f(s['set']), s['coverage'], -1*abs(s['size'])) for s in sets],dtype=[('set', 'O'), ('coverage', 'f4'),('size', 'i4')])
+        converted_sets.sort(order=['coverage', 'size', 'set'])
+        converted_sets = converted_sets[::-1]
+        
+        for i, set in enumerate(converted_sets['set']):
+            for cond in set:
+                idx = cond*-1
+                if cond_cutoff is None or idx < cond_cutoff - 1:
+                    combination_mat[idx][i] = individual[idx]['coverage']*100
+                else:
+                     conds_over_ys.append(i)
+                     conds_over_txt.append(f'{idx+1}')
+                     combination_mat[cond_cutoff - 1][i] = individual[idx]['coverage']*100
+
+        sums = np.nansum(combination_mat, axis=1)
+        trim_count = np.trim_zeros(sums, 'b')
+        print(np.average(sets['size']))
+        combination_mat = combination_mat[:len(trim_count) + 1]
+        cmap = mpl.colormaps.get_cmap('viridis')
+        cmap.set_bad('white', alpha=1)
+        cmap.set_under('lightgray')
+        cmap.name = 'vir_bad'
+        try:
+            plt.colormaps.register(cmap)
+        except ValueError:
+            pass
+        plt.set_cmap(cmap)
+        vmin = min(np.nanmin(combination_mat), vmin)
+        vmax = max(sets['coverage'].max()*100, vmax)
+        mat = ax1.imshow(combination_mat.T, aspect='auto', origin='upper', cmap=cmap, vmin=vmin, vmax=vmax)
+        ax1.set_xlabel('Ranked Individual Conditions', fontsize=font_size)
+        ax1.set_ylabel(f'Ranked Condition Sets', fontsize=font_size)
+        ticks = [0]
+        ticks.extend(np.arange(4,combination_mat.shape[0], 5))
+        ax1.set_xticks(ticks)
+        labels = [f"{i + 1}" for i in ticks[:-1]]
+        if cond_cutoff is None:
+            labels.append(f'{ticks[-1]+1}')
+        else:
+            labels.append(f'{cond_cutoff}+')
+        ax1.set_xticklabels(labels)
+        ticks = [0]
+        ticks.extend(np.arange(4,combination_mat.shape[1], 5))
+        ax1.set_yticks(ticks)
+        labels = [i + 1 for i in ticks]
+        ax1.set_yticklabels(labels)
+        for i, txt in enumerate(conds_over_txt):
+            ax1.annotate(txt, (cond_cutoff - 1, conds_over_ys[i]), color='white', fontsize=8, ha='center', va='center')
+        print(vmin)
+        print(vmax)
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        colors = cmap(norm(sets['coverage'] * 100))
+        print(sets['coverage']*100)
+        ax2.barh(range(len(sets)), sets['coverage']*100, color = colors)
+        ax2.set_xlabel('Coverage (%)', fontsize=font_size)
+        cax = plt.axes((0.05, 0.0, 0.9, 0.025))
+        cbar = plt.colorbar(label='Coverage of Reactant Space (%)',cax= cax, ax=[ax1, ax2], mappable=mat, orientation="horizontal")
+        cbar.ax.tick_params(labelsize=13)
+        cbar.ax.set_xlabel('Coverage of Reactant Space (%)', fontsize=font_size)
+        ax2.set_xbound(cov_min,cov_max)
+        # create grid lines
+        ax1.set_xticks(np.arange(-.5, combination_mat.shape[0], 1), minor=True)
+        ax1.set_yticks(np.arange(-.5, combination_mat.shape[1], 1), minor=True)
+
+        ax1.tick_params(which='minor', length=0)
+        ax2.tick_params(which='minor', length=0)
+        ax1.grid(color='lightgray', which='minor', linestyle='-', linewidth=0.5)
+        ax1.tick_params(axis='both', which='major', labelsize=13)
+        ax2.tick_params(axis='both', which='major', labelsize=13)
+        dark_ticks = []
+        for i in range(1, combination_mat.shape[1]):
+            if sets[i]['coverage'] < sets[i-1]['coverage'] or sets[i]['size'] > sets[i-1]['size']:
+                dark_ticks.append(i-.5)
+                ax1.hlines(i-.5, xmin=-.5, xmax=combination_mat.shape[0] - .5, colors='black', linestyles='-', linewidth=.5)
+        plt.savefig("./set_components.png")
+        plt.show(block=True)
     
     def plot_coverage_over_yield(self, coverage_threshold = .6)->None:
         ax1:plt.Axes;ax2:plt.Axes
@@ -249,35 +322,21 @@ class ChemicalSpace:
         yields, coverages = self.get_yield_coverage()
         all_yields, successful_reactions = self.get_yield_success()
         cond_yields, cond_coverages = self.get_individual_conditions_coverage()
-        # idx = int(np.floor(.6 * (np.prod(self.shape[self.conditions_dim:]))))
         idx = int(np.floor(coverage_threshold * (len(yields))))
         y = yields[idx]
 
         all_idx = len(all_yields) - np.searchsorted(all_yields[::-1], y, side='right')
-        # find location where 50% of reactions are successful
-        # all_idx2 = int(np.floor(.5 * (len(all_yields))))
-        # y2 = all_yields[all_idx2]
-        # idx2 = len(yields) - max(np.searchsorted(yields[::-1], y2, side='left'), 1) # handle case where y2 is less than the minimum yield of the max yield surface
-        # if yields[idx2] < y2 and idx2 > 0:
-        #     idx2 -= 1
-
         # plot of coverage vs yield
         ax1.plot(yields, coverages, cond_yields, cond_coverages)
-        # ax1.plot([y, y], [coverages[idx], 0], 'k-')
-        # ax1.plot([min(y2,yields[-1]), yields[0]], [coverages[idx]]*2, 'k-')
-        # ax1.scatter([y, y2], [coverages[idx], coverages[idx2]])
         ax1.scatter([y], [coverages[idx]])
         ax1.annotate(f'{y:.2f}% yield,\n{coverages[idx]:.3f} coverage', (y, coverages[idx]), textcoords="offset points", xytext=(0,10), ha='left')
-        # ax1.annotate(f'{y2:.2f}% yield,\n{coverages[idx2]:.3f} coverage', (y2, coverages[idx2]), textcoords="offset points", xytext=(0,10), ha='left')
         ax1.set_xlabel('Yield')
         ax1.set_ylabel('Coverage')
         ax1.set_title('Coverage vs Yield')
         # plot of % of successful reactions vs yield
         ax2.plot(all_yields, successful_reactions)
-        # ax2.scatter([y, y2], [successful_reactions[all_idx], successful_reactions[all_idx2]])
         ax2.scatter([y], [successful_reactions[all_idx]])
         ax2.annotate(f'{y:.2f}% yield\n{successful_reactions[all_idx]:.3f} reactions successful', (y, successful_reactions[all_idx]), textcoords="offset points", xytext=(0,10), ha='left')
-        # ax2.annotate(f'{y2:.2f}% yield\n{successful_reactions[all_idx2]:.3f} reactions successful', (y2, successful_reactions[all_idx2]), textcoords="offset points", xytext=(0,10), ha='left')
         ax2.set_xlabel('Yield')
         ax2.set_ylabel('Successful Reactions')
         ax2.set_title('Successful Reactions vs Yield')

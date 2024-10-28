@@ -26,8 +26,6 @@ EXPLORE = 0
 EXPEXP = 1
 EXPLOIT = 2
 FLIPPED = 3
-EXPEXP_FAST2 = 4
-EXPT_FAST2 = 5
 EXPEXP_FAST = 6
 EXPT_FAST = 7
 EXPEXP_FAST_SUM = 8
@@ -82,9 +80,9 @@ class Controller:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus, stochastic_cond_num=self.stochastic_cond_num, model_type=self.model_type)
         elif learner_type == FLIPPED:
             self.learner = ALClassifier(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.linspace(1, 0, x)), cpus=num_cpus, model_type=self.model_type)
-        elif learner_type == EXPEXP_FAST2:
+        elif learner_type == 4:
             self.learner = ALClassifierFast(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus, model_type=self.model_type)
-        elif learner_type == EXPT_FAST2:
+        elif learner_type == 5:
             self.learner = ALClassifierFast(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, alpha_init_fun=(lambda x: np.zeros(x)), cpus=num_cpus, model_type=self.model_type)
         elif learner_type == EXPEXP_FAST:
             self.learner = ALClassifierFast2(self.chemical_space.shape, self.chemical_space.all_conditions, self.max_set_size, cpus=num_cpus, model_type=self.model_type, stochastic_cond_num=self.stochastic_cond_num)
@@ -140,7 +138,7 @@ class Controller:
             self.metrics = pickle.load(f)
         self.optimization_runs = max(self.metrics.keys()) + 1
     
-    def get_initial_seed(self, sampling_method:str = 'LHS') -> list:
+    def get_initial_seed(self, sampling_method:str = 'file') -> list:
         '''
         returns a list of n points to be used as the initial seed for the optimization, with at least one successful and one unsuccessful reaction
         @params:

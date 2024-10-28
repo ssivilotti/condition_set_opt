@@ -128,7 +128,7 @@ def create_batch_dict(files):
     return batch_dict
 
 def compare_spaces(spaces:list[ChemicalSpace])->None:
-    fig, (ax1, ax2, ax0, ax3) = plt.subplots(1, 1, figsize=(5, 5)) #ax1, ax2, ax0, ax3
+    fig, (ax1, ax2, ax0, ax3) = plt.subplots(1, 4, figsize=(20, 5)) #ax1, ax2, ax0, ax3
     for cs in spaces:
         yields, coverage = cs.get_yield_coverage()
         all_yields, successful_rxns = cs.get_yield_success()
@@ -158,11 +158,9 @@ def compare_spaces(spaces:list[ChemicalSpace])->None:
         ax3.plot(diff_total_cov, diff, label=cs.dataset_name)
     ax3.set_xlabel('Total Coverage', fontsize=13)
     ax3.set_ylabel('Gap in Individual and Max Coverage', fontsize=13)
-    ax3.legend()
     ax3.set_title('Total Coverage vs Difference', fontsize=13)
     ax0.set_xlabel('Yield Cutoff', fontsize=13)
     ax0.set_ylabel('Gap in Individual and Max Coverage', fontsize=13)
-    ax0.legend()
     ax0.set_title('Yield vs Coverage Difference', fontsize=13)
     ax1.set_xlabel('Yield Cutoff', fontsize=13)
     ax1.set_ylabel('Max Coverage', fontsize=13)
@@ -170,7 +168,6 @@ def compare_spaces(spaces:list[ChemicalSpace])->None:
     ax1.set_title('Yield vs Coverage', fontsize=13)
     ax2.set_xlabel('Yield Cutoff', fontsize=13)
     ax2.set_ylabel('Successful Reactions', fontsize=13)
-    ax2.legend()
     ax2.set_title('Yield vs Successful Reactions', fontsize=13)
     plt.show()
 

@@ -5,14 +5,17 @@ n_repeats: 100
 batch_size: ???
 dataset: ???
 learner_type: ???
-num_cpus: 1
+num_cpus: 6
+stochastic_batch_num: None
+model_type: ???
+opt_init: 0
 
 hydra:
   job:
     chdir: True
   launcher:
     timeout_min: 10080
-    cpus_per_task: 1
+    cpus_per_task: 6
     partition: mmli
     additional_parameters: { nodelist: ccc0308 }
     name: cond_set_opt
@@ -21,6 +24,8 @@ hydra:
   verbose: true
   sweeper:
     params:
-      batch_size: 1, 5, 10, 20, 40, 80, 160 
-      dataset: aryl_scope, borylation, deoxy, buchwald_hartwig 
-      learner_type: -1, 0, 1, 2
+      batch_size: 1, 10, 20, 40, 80, 160
+      dataset: aryl_scope, deoxy, borylation, buchwald_hartwig
+      learner_type: -1, 0, 6, 7
+      model_type: RF
+      

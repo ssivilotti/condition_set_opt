@@ -7,15 +7,18 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score
 from space_mat import SpaceMatrix
 from space_mat import THRESHOLDED_COUNT
 from matplotlib.colors import ListedColormap
+from tools.featurize import convert_to_onehot
+import rdkit.Chem as Chem
 
 class ChemicalSpace:
-    def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield') -> None:
+    def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield', titles_to_fingerprint=None) -> None:
         '''
         @params:
         condition_titles: list of strings, the headers of the condition components in the data file ex. ['ligand', 'solvent', 'temperature']
         reactant_titles: list of strings, the headers of the reactants in the data file ex. ['electrophile', 'nucleophile']
         data_file: string, the path to the csv file that contains the data
         target_title: string, the header of the target column in the data file (default is 'yield')
+        fingerprint_file: string, the path to the csv file that contains the fingerprint data 
 
         attributes:
         reactants_dim: int, the number of reactants used in a given reation
@@ -31,11 +34,20 @@ class ChemicalSpace:
         self.conditions_dim = len(condition_titles)
         self.dataset_name = data_file.split('/')[-1].split('.')[0]
         self.yield_surface = SpaceMatrix(self._create_mat(data_file, condition_titles, reactant_titles, target_title))
+        self.fingerprints = []
+        for i, title in enumerate(self.titles):
+            if title in titles_to_fingerprint:
+                self.features.append([Chem.RDKFingerprint(Chem.MolFromSmiles(x)) for x in self.labels[i]])
+            else:
+                self.features.append(np.diag(np.ones(len(self.labels[i]))))
+
         self.shape = self.yield_surface.shape
         self.all_points = list(itertools.product(*[range(s) for s in self.shape]))
+        #TODO - finish this, change to be a product of the features of each title
+        self.all_points_featurized = list(itertools.product(*[range(s) for s in self.shape]))
         self._y_true = np.array([self.yield_surface[point] for point in self.all_points])
         self.all_conditions = list(itertools.product(*[range(s) for s in self.shape[:self.conditions_dim]]))
-        self.descriptors = None
+        # self.descriptors = None
 
     def _create_mat(self, data_file, cond_titles:list, reactant_titles:list,  target_title)->np.ndarray:
         # Create a matrix of the data
@@ -51,6 +63,18 @@ class ChemicalSpace:
             # restrict the yields to be between 0 and 100
             data_mat[tuple(point)] = max(min(series[target_title], 100), 0)
         return data_mat
+    
+    def convert_to_fingerprint(self, point):
+        '''Converts a point in the chemical space with the associated fingerprint features, and the rest OHE'''
+        result = []
+        for i, title in enumerate(self.titles):
+            if title in self.fingerprints.keys():
+                result.append(self.fingerprints[title][point[i]])
+            else:
+                ohe = np.zeros(len(self.labels[i]))
+                ohe[point[i]] = 1
+                result.append(ohe)
+        return result
 
     def measure_reaction_yield(self, point:list) -> float:
         '''

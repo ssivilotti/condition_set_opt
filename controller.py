@@ -1,5 +1,6 @@
 import os
 import pickle
+import sys
 from matplotlib import pyplot as plt
 import numpy as np
 import datetime as dt
@@ -10,7 +11,7 @@ from space_mat import THRESHOLDED_COUNT, WEIGHTED_COUNT
 from learners.al_classifier import ALClassifierBasic
 from learners.random_selection import ALClassifierRandomSelection
 from learners.al_classifier_exploit import ALClassifierFast
-from tools.functions import convert_to_onehot, convert_point_to_idx
+from tools.featurize import convert_to_onehot, convert_point_to_idx
 from learners.al_classifier_modified import ALClassifier
 from learners.al_classifier_exploit_2 import ALClassifierFast2
 from learners.al_classifier_exploit_sum import ALClassifierFastSum
@@ -138,7 +139,7 @@ class Controller:
             self.metrics = pickle.load(f)
         self.optimization_runs = max(self.metrics.keys()) + 1
     
-    def get_initial_seed(self, sampling_method:str = 'file') -> list:
+    def get_initial_seed(self, sampling_method:str = 'LHS') -> list:
         '''
         returns a list of n points to be used as the initial seed for the optimization, with at least one successful and one unsuccessful reaction
         @params:
@@ -261,6 +262,8 @@ class Controller:
             print(f"Loop Time: {time.time() - loop_time} seconds")
             loop_time = time.time()
             last_measured_time = time.time()
+            
+            sys.stdout.flush()
 
         metrics['num_experiments_run'] = num_experiments_run   
 

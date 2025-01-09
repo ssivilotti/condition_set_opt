@@ -1,6 +1,5 @@
 import os
 import pickle
-import sys
 from matplotlib import pyplot as plt
 import numpy as np
 import datetime as dt
@@ -262,8 +261,6 @@ class Controller:
             print(f"Loop Time: {time.time() - loop_time} seconds")
             loop_time = time.time()
             last_measured_time = time.time()
-            
-            sys.stdout.flush()
 
         metrics['num_experiments_run'] = num_experiments_run   
 

@@ -34,20 +34,18 @@ class ChemicalSpace:
         self.conditions_dim = len(condition_titles)
         self.dataset_name = data_file.split('/')[-1].split('.')[0]
         self.yield_surface = SpaceMatrix(self._create_mat(data_file, condition_titles, reactant_titles, target_title, condition_parameter_subspace))
-        self.fingerprints = []
+        self.features = []
         for i, title in enumerate(self.titles):
             if title in titles_to_fingerprint:
-                self.features.append([Chem.RDKFingerprint(Chem.MolFromSmiles(x)) for x in self.labels[i]])
+                self.features.append([np.array(Chem.RDKFingerprint(Chem.MolFromSmiles(x))) for x in self.labels[i]])
             else:
                 self.features.append(np.diag(np.ones(len(self.labels[i]))))
 
         self.shape = self.yield_surface.shape
         self.all_points = list(itertools.product(*[range(s) for s in self.shape]))
-        #TODO - finish this, change to be a product of the features of each title
-        self.all_points_featurized = list(itertools.product(*[range(s) for s in self.shape]))
+        self.all_points_featurized = [self.create_feature_vector(point) for point in self.all_points]
         self._y_true = np.array([self.yield_surface[point] for point in self.all_points])
         self.all_conditions = list(itertools.product(*[range(s) for s in self.shape[:self.conditions_dim]]))
-        # self.descriptors = None
 
     def _create_mat(self, data_file, cond_titles:list, reactant_titles:list,  target_title, condition_params_default)->np.ndarray:
         # Create a matrix of the data
@@ -69,16 +67,11 @@ class ChemicalSpace:
             data_mat[tuple(point)] = max(min(series[target_title], 100), 0)
         return data_mat
     
-    def convert_to_fingerprint(self, point):
+    def create_feature_vector(self, point):
         '''Converts a point in the chemical space with the associated fingerprint features, and the rest OHE'''
         result = []
-        for i, title in enumerate(self.titles):
-            if title in self.fingerprints.keys():
-                result.append(self.fingerprints[title][point[i]])
-            else:
-                ohe = np.zeros(len(self.labels[i]))
-                ohe[point[i]] = 1
-                result.append(ohe)
+        for i in range(len(point)):
+            result.extend(self.features[i][point[i]])
         return result
 
     def measure_reaction_yield(self, point:list) -> float:

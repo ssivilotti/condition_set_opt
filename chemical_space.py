@@ -11,7 +11,7 @@ from tools.featurize import convert_to_onehot
 import rdkit.Chem as Chem
 
 class ChemicalSpace:
-    def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield', condition_parameter_subspace={}, titles_to_fingerprint=None) -> None:
+    def __init__(self, condition_titles:list, reactant_titles:list, data_file:str, target_title='yield', condition_parameter_subspace={}, titles_to_fingerprint=[]) -> None:
         '''
         @params:
         condition_titles: list of strings, the headers of the condition components in the data file ex. ['ligand', 'solvent', 'temperature']

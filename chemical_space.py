@@ -171,7 +171,7 @@ class ChemicalSpace:
         @params:
         file_name: string, the file path location where the plot will be saved
         conditions: tuple of condition tuples
-        yield_threshold: float, the minimum yield to count as a successful condition, all reactions below this threshold will be set to 0
+        yield_threshold: float, the minimum yield to count as a successful reaction, all reactions below this threshold will be set to 0
 
         requires that the chemical space has exactly 2 reactants
 
